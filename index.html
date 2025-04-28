@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Formatter</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Excel Formatter</h1>
+        </header>
+        
+        <main>
+            <div class="file-queue-section">
+                <h2>File Queue</h2>
+                <div id="drop-zone" class="drop-zone">
+                    <p>Drag Excel files here or</p>
+                    <input type="file" id="file-input" accept=".xlsx,.xlsm,.xltx,.xltm" multiple>
+                    <label for="file-input" class="file-input-label">Browse Files</label>
+                </div>
+                <div id="file-queue" class="file-queue"></div>
+            </div>
+            
+            <div class="preview-section">
+                <h2>Excel Preview</h2>
+                <div id="excel-preview" class="excel-preview">
+                    <p class="no-file-selected">No file selected</p>
+                </div>
+                
+                <div class="formatting-options">
+                    <h3>Formatting Options</h3>
+                    <div class="options-grid">
+                        <div class="option">
+                            <input type="checkbox" id="remove-blank-lines" checked>
+                            <label for="remove-blank-lines">Remove blank lines</label>
+                        </div>
+                        <div class="option">
+                            <input type="checkbox" id="capitalize-sentences" checked>
+                            <label for="capitalize-sentences">Capitalize sentences</label>
+                        </div>
+                        <div class="option">
+                            <input type="checkbox" id="add-periods" checked>
+                            <label for="add-periods">Add periods to end of lines</label>
+                        </div>
+                        <div class="option">
+                            <input type="checkbox" id="remove-spaces-quotes" checked>
+                            <label for="remove-spaces-quotes">Remove spaces from single letters in quotes</label>
+                        </div>
+                        <div class="option">
+                            <input type="checkbox" id="remove-spaces-unquoted" checked>
+                            <label for="remove-spaces-unquoted">Remove spaces from 3+ single characters (unquoted)</label>
+                        </div>
+                        <div class="option">
+                            <input type="checkbox" id="remove-lone-quotes" checked>
+                            <label for="remove-lone-quotes">Remove lone quotation marks</label>
+                        </div>
+                        <div class="option">
+                            <input type="checkbox" id="remove-ellipsis" checked>
+                            <label for="remove-ellipsis">Remove ellipsis (...)</label>
+                        </div>
+                    </div>
+                    
+                    <button id="format-button" class="format-button" disabled>Format Excel</button>
+                    <button id="shutdown-button" class="shutdown-button">Turn Off Server</button>
+                </div>
+            </div>
+        </main>
+        
+        <div id="status-bar" class="status-bar">Ready</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
