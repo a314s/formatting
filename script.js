@@ -194,12 +194,16 @@ function convertWordToPDF(file) {
         return response.json();
     })
     .then(data => {
-        const fileId = generateFileId();
-        pdfFiles.set(fileId, {
-            id: data.id,
-            name: file.name.replace(/\.docx?$/, '.pdf')
-        });
-        updatePDFQueue();
+        if (data.success && data.pdf_filename) {
+            const fileId = generateFileId();
+            pdfFiles.set(fileId, {
+                id: data.id, // This is the job/conversion ID
+                name: data.pdf_filename // Use the filename returned by the server
+            });
+            updatePDFQueue();
+        } else {
+             throw new Error(data.error || 'Conversion failed on server');
+        }
     });
 }
 
