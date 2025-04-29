@@ -20,13 +20,111 @@ body {
     padding: 20px;
 }
 
-header {
-    text-align: center;
+/* Tab Container and Content */
+.tab-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-navigation {
+    display: flex;
+    gap: 10px;
     margin-bottom: 20px;
-    padding: 10px;
+    background: #fff;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.tab-button {
+    padding: 10px 20px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fff;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.tab-button:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+}
+
+.tab-button.active {
+    background: #007bff;
+    color: #fff;
+    border-color: #0056b3;
+}
+
+.tab-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-pane {
+    display: none;
+    flex: 1;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+header {
+    margin-bottom: 20px;
+    padding: 15px 20px;
     background-color: #fff;
     border-radius: 8px;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-content h1 {
+    margin: 0;
+}
+
+.header-content .shutdown-button {
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+/* Tab Navigation */
+.tab-navigation {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    background: #fff;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.tab-button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    background: #f0f0f0;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tab-button:hover {
+    background: #e0e0e0;
+}
+
+.tab-button.active {
+    background: #007bff;
+    color: #fff;
 }
 
 h1 {
@@ -399,6 +497,117 @@ tr:nth-child(even) {
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 14px;
+}
+
+/* Word to PDF Converter Styles */
+.word-converter-container {
+    padding: 20px;
+}
+
+.queue-section, .output-section {
+    background: var(--card-bg);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    height: 100%;
+}
+
+.file-queue {
+    margin-top: 15px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    margin: 5px 0;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.file-item:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.file-item.selected {
+    background: rgba(var(--primary-rgb), 0.3);
+    border: 1px solid var(--primary-color);
+}
+
+.file-item .file-name {
+    flex-grow: 1;
+    margin-right: 10px;
+}
+
+.file-item .file-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.file-item .file-actions button {
+    padding: 2px 8px;
+    font-size: 12px;
+}
+
+/* History Tab Styles */
+.history-container {
+    padding: 20px;
+}
+
+.history-list {
+    background: var(--card-bg);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    overflow-x: auto;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.history-table th,
+.history-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.history-table th {
+    font-weight: 600;
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.history-table tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.history-table .action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.history-table .action-buttons button {
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 4px;
+}
+
+#history-status {
+    color: var(--text-color);
+    font-style: italic;
 }
 
 .form-control:focus {

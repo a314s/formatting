@@ -2,7 +2,313 @@
 let ws = null;
 let currentExcelSession = null;
 
+// Word to PDF Converter Code
+let wordFiles = new Map();  // Store Word files
+let pdfFiles = new Map();   // Store converted PDFs
+
+function setupWordConverter() {
+    const wordDropZone = document.getElementById('word-drop-zone');
+    const wordInput = document.getElementById('word-input');
+    const wordQueue = document.getElementById('word-queue');
+    const pdfQueue = document.getElementById('pdf-queue');
+    const convertAllBtn = document.getElementById('convert-all-btn');
+    const downloadAllBtn = document.getElementById('download-all-btn');
+    const progressBar = document.querySelector('#word-converter .progress');
+    const progressBarInner = progressBar ? progressBar.querySelector('.progress-bar') : null;
+    const errorContainer = document.getElementById('word-converter-error');
+
+    // Setup drop zone
+    setupDropZone(wordDropZone, wordInput, handleWordFile);
+
+    // Handle file input change
+    wordInput.addEventListener('change', function() {
+        Array.from(this.files).forEach(handleWordFile);
+    });
+
+    // Handle file selection in word queue
+    wordQueue.addEventListener('click', function(e) {
+        const fileItem = e.target.closest('.file-item');
+        if (fileItem) {
+            // Toggle selection
+            fileItem.classList.toggle('selected');
+            const hasSelected = wordQueue.querySelector('.file-item.selected');
+            convertAllBtn.disabled = !hasSelected;
+        }
+    });
+
+    // Handle file selection in PDF queue
+    pdfQueue.addEventListener('click', function(e) {
+        const fileItem = e.target.closest('.file-item');
+        if (fileItem) {
+            // Toggle selection
+            fileItem.classList.toggle('selected');
+            const hasSelected = pdfQueue.querySelector('.file-item.selected');
+            downloadAllBtn.disabled = !hasSelected;
+        }
+    });
+
+    // Convert all selected files
+    convertAllBtn.addEventListener('click', function() {
+        const selectedFiles = Array.from(wordQueue.querySelectorAll('.file-item.selected'));
+        if (selectedFiles.length === 0) return;
+
+        progressBar.style.display = 'flex';
+        progressBarInner.style.width = '0%';
+        errorContainer.style.display = 'none';
+
+        // Convert each selected file
+        Promise.all(selectedFiles.map(fileItem => {
+            const fileId = fileItem.dataset.fileId;
+            const file = wordFiles.get(fileId);
+            return convertWordToPDF(file);
+        }))
+        .then(results => {
+            progressBarInner.style.width = '100%';
+            setTimeout(() => {
+                progressBar.style.display = 'none';
+            }, 1000);
+            updatePDFQueue();
+        })
+        .catch(error => {
+            showWordConverterError(error.message);
+        });
+    });
+
+    // Download all selected PDFs
+    downloadAllBtn.addEventListener('click', function() {
+        const selectedFiles = Array.from(pdfQueue.querySelectorAll('.file-item.selected'));
+        selectedFiles.forEach(fileItem => {
+            const fileId = fileItem.dataset.fileId;
+            const pdfFile = pdfFiles.get(fileId);
+            if (pdfFile) {
+                downloadPDF(pdfFile.id, pdfFile.name);
+            }
+        });
+    });
+}
+
+function handleWordFile(file) {
+    if (!file.name.endsWith('.doc') && !file.name.endsWith('.docx')) {
+        showWordConverterError('Please upload only Word files (.doc or .docx)');
+        return;
+    }
+
+    const fileId = generateFileId();
+    wordFiles.set(fileId, file);
+    updateWordQueue();
+}
+
+function updateWordQueue() {
+    const wordQueue = document.getElementById('word-queue');
+    wordQueue.innerHTML = '';
+    
+    wordFiles.forEach((file, fileId) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.dataset.fileId = fileId;
+        fileItem.innerHTML = `
+            <span class="file-name">${file.name}</span>
+            <div class="file-actions">
+                <button class="btn btn-sm btn-danger" onclick="removeWordFile('${fileId}')">Remove</button>
+            </div>
+        `;
+        wordQueue.appendChild(fileItem);
+    });
+
+    document.getElementById('convert-all-btn').disabled = wordFiles.size === 0;
+}
+
+function updatePDFQueue() {
+    const pdfQueue = document.getElementById('pdf-queue');
+    pdfQueue.innerHTML = '';
+    
+    pdfFiles.forEach((file, fileId) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.dataset.fileId = fileId;
+        fileItem.innerHTML = `
+            <span class="file-name">${file.name}</span>
+            <div class="file-actions">
+                <button class="btn btn-sm btn-primary" onclick="downloadPDF('${file.id}', '${file.name}')">Download</button>
+                <button class="btn btn-sm btn-danger" onclick="removePDFFile('${fileId}')">Remove</button>
+            </div>
+        `;
+        pdfQueue.appendChild(fileItem);
+    });
+
+    document.getElementById('download-all-btn').disabled = pdfFiles.size === 0;
+}
+
+function removeWordFile(fileId) {
+    wordFiles.delete(fileId);
+    updateWordQueue();
+}
+
+function removePDFFile(fileId) {
+    pdfFiles.delete(fileId);
+    updatePDFQueue();
+}
+
+function convertWordToPDF(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return fetch('/api/convert-word', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(text);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        const fileId = generateFileId();
+        pdfFiles.set(fileId, {
+            id: data.id,
+            name: file.name.replace(/\.docx?$/, '.pdf')
+        });
+        updatePDFQueue();
+    });
+}
+
+function downloadPDF(fileId, fileName) {
+    window.location.href = `/download/pdf/${fileId}/${fileName}`;
+}
+
+function showWordConverterError(message) {
+    const errorContainer = document.getElementById('word-converter-error');
+    errorContainer.textContent = message;
+    errorContainer.style.display = 'block';
+}
+
+function generateFileId() {
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+// Function to load and display history
+function loadHistory() {
+    const historyTableBody = document.getElementById('history-table-body');
+    const historyStatus = document.getElementById('history-status');
+    
+    fetch('/api/history')
+        .then(response => response.json())
+        .then(history => {
+            historyTableBody.innerHTML = '';
+            if (history.length === 0) {
+                historyStatus.textContent = 'No processing history found.';
+                return;
+            }
+            
+            history.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.date}</td>
+                    <td>${item.type}</td>
+                    <td>${item.files.join(', ')}</td>
+                    <td class="action-buttons">
+                        ${item.files.map(file => `
+                            <button class="btn btn-sm btn-primary" onclick="downloadFile('${item.id}', '${file}')">
+                                Download ${file}
+                            </button>
+                        `).join('')}
+                        <button class="btn btn-sm btn-danger" onclick="deleteJob('${item.id}')">
+                            Delete
+                        </button>
+                    </td>
+                `;
+                historyTableBody.appendChild(row);
+            });
+            historyStatus.textContent = '';
+        })
+        .catch(error => {
+            historyStatus.textContent = 'Error loading history: ' + error.message;
+        });
+}
+
+// Function to download a file from history
+function downloadFile(jobId, filename) {
+    window.location.href = `/download/${jobId}/${filename}`;
+}
+
+// Function to delete a job
+function deleteJob(jobId) {
+    if (confirm('Are you sure you want to delete this job and its files?')) {
+        fetch(`/cleanup/${jobId}`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadHistory();  // Refresh the history list
+            } else {
+                alert('Failed to delete job: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Error deleting job: ' + error.message);
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Word to PDF converter
+    setupWordConverter();
+
+    // Setup shutdown button
+    const shutdownButton = document.getElementById('shutdown-button');
+    if (shutdownButton) {
+        shutdownButton.addEventListener('click', function() {
+            if (confirm('Are you sure you want to shut down the server?')) {
+                this.disabled = true;
+                fetch('/shutdown')
+                    .then(response => {
+                        if (response.ok) {
+                            alert('Server is shutting down. You can close this window.');
+                            setTimeout(() => window.close(), 1000);
+                        } else {
+                            throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error shutting down server:', error);
+                        alert(`Error shutting down server: ${error.message}`);
+                        this.disabled = false;
+                    });
+            }
+        });
+    }
+
+    // Setup tab switching
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const tabId = this.dataset.tab;
+            
+            // Update active states
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabPanes.forEach(pane => pane.classList.remove('active'));
+            
+            this.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+
+            // Load history if needed
+            if (tabId === 'history') {
+                loadHistory();
+            }
+        });
+    });
+
+    // Activate first tab by default
+    if (tabButtons.length > 0) {
+        tabButtons[0].click();
+    }
+
     // Get WebSocket port from server
     fetch('/ws-port')
         .then(response => response.json())
@@ -11,22 +317,6 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(console.error);
 
-    // Tab Switching
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabPanes = document.querySelectorAll('.tab-pane');
-
-    tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const tabId = button.dataset.tab;
-            
-            // Update active states
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            tabPanes.forEach(pane => pane.classList.remove('active'));
-            
-            button.classList.add('active');
-            document.getElementById(tabId).classList.add('active');
-        });
-    });
 
     // Excel Formatter Code
     const dropZone = document.getElementById('drop-zone');
@@ -34,7 +324,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileQueue = document.getElementById('file-queue');
     const excelPreview = document.getElementById('excel-preview');
     const formatButton = document.getElementById('format-button');
-    const shutdownButton = document.getElementById('shutdown-button');
     const statusBar = document.getElementById('status-bar');
     
     // Options checkboxes
@@ -57,7 +346,6 @@ document.addEventListener('DOMContentLoaded', function() {
     dropZone.addEventListener('drop', handleDrop);
     fileInput.addEventListener('change', handleFileSelect);
     formatButton.addEventListener('click', formatExcel);
-    shutdownButton.addEventListener('click', shutdownServer);
     
     // Excel Formatter Functions
     function handleDragOver(e) {
@@ -303,26 +591,6 @@ document.addEventListener('DOMContentLoaded', function() {
         formatButton.disabled = selectedFileIndex === -1 || !workbook;
     }
     
-    function shutdownServer() {
-        if (confirm('Are you sure you want to shut down the server?')) {
-            updateStatus('Shutting down server...');
-            shutdownButton.disabled = true;
-            
-            fetch('/shutdown')
-                .then(response => {
-                    if (response.ok) {
-                        updateStatus('Server is shutting down. You can close this window.');
-                    } else {
-                        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error shutting down server:', error);
-                    updateStatus(`Error shutting down server: ${error.message}`);
-                    shutdownButton.disabled = false;
-                });
-        }
-    }
 
     // Video to PDF Code
     const videoDropZone = document.getElementById('video-drop-zone');
@@ -550,18 +818,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const liveExcelTable = document.getElementById('live-excel-table').querySelector('tbody');
     let savedExcelPath = null;
 
-    // Create hidden file input for directory selection
+    // Create hidden directory input for folder selection
     const dirInput = document.createElement('input');
     dirInput.type = 'file';
     dirInput.setAttribute('webkitdirectory', '');
     dirInput.setAttribute('directory', '');
+    dirInput.setAttribute('mozdirectory', '');
     dirInput.style.display = 'none';
     document.body.appendChild(dirInput);
 
     // Handle directory selection
     dirInput.addEventListener('change', function() {
         if (this.files.length > 0) {
-            saveLocation.value = this.files[0].path;
+            // Get the directory path from the first file
+            const path = this.files[0].path;
+            // Extract the directory path by removing the filename
+            const dirPath = path.substring(0, path.lastIndexOf('\\'));
+            saveLocation.value = dirPath;
         }
     });
 
