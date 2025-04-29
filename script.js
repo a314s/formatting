@@ -1,5 +1,22 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // DOM Elements
+    // Tab Switching
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const tabId = button.dataset.tab;
+            
+            // Update active states
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabPanes.forEach(pane => pane.classList.remove('active'));
+            
+            button.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+        });
+    });
+
+    // Excel Formatter Code
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const fileQueue = document.getElementById('file-queue');
@@ -17,12 +34,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const removeLoneQuotes = document.getElementById('remove-lone-quotes');
     const removeEllipsis = document.getElementById('remove-ellipsis');
     
-    // State variables
+    // Excel Formatter State
     let files = [];
     let selectedFileIndex = -1;
     let workbook = null;
     
-    // Event Listeners
+    // Excel Formatter Event Listeners
     dropZone.addEventListener('dragover', handleDragOver);
     dropZone.addEventListener('dragleave', handleDragLeave);
     dropZone.addEventListener('drop', handleDrop);
@@ -30,7 +47,7 @@ document.addEventListener('DOMContentLoaded', function() {
     formatButton.addEventListener('click', formatExcel);
     shutdownButton.addEventListener('click', shutdownServer);
     
-    // Drag and Drop Handlers
+    // Excel Formatter Functions
     function handleDragOver(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -57,14 +74,12 @@ document.addEventListener('DOMContentLoaded', function() {
     function handleFileSelect(e) {
         const newFiles = e.target.files;
         addFilesToQueue(newFiles);
-        fileInput.value = ''; // Reset file input
+        fileInput.value = '';
     }
     
-    // File Queue Management
     function addFilesToQueue(newFiles) {
         for (let i = 0; i < newFiles.length; i++) {
             const file = newFiles[i];
-            // Check if it's an Excel file
             if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
                 file.type === 'application/vnd.ms-excel' ||
                 file.name.endsWith('.xlsx') || 
@@ -138,7 +153,6 @@ document.addEventListener('DOMContentLoaded', function() {
             addFileToQueueUI(file, index);
         });
         
-        // Update selected file highlight
         if (selectedFileIndex >= 0) {
             const selectedItem = fileQueue.querySelector(`[data-index="${selectedFileIndex}"]`);
             if (selectedItem) {
@@ -150,7 +164,6 @@ document.addEventListener('DOMContentLoaded', function() {
     function selectFile(index) {
         selectedFileIndex = index;
         
-        // Update UI selection
         const fileItems = fileQueue.querySelectorAll('.file-item');
         fileItems.forEach(item => item.classList.remove('selected'));
         
@@ -159,13 +172,10 @@ document.addEventListener('DOMContentLoaded', function() {
             selectedItem.classList.add('selected');
         }
         
-        // Load and preview the selected Excel file
         loadExcelPreview(files[index]);
-        
         updateFormatButtonState();
     }
     
-    // Excel Preview
     function loadExcelPreview(file) {
         updateStatus(`Loading preview for ${file.name}...`);
         
@@ -199,14 +209,9 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Get the first sheet
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        
-        // Convert to HTML table
         const html = XLSX.utils.sheet_to_html(worksheet);
-        
-        // Display in preview
         excelPreview.innerHTML = html;
     }
     
@@ -215,7 +220,6 @@ document.addEventListener('DOMContentLoaded', function() {
         workbook = null;
     }
     
-    // Excel Formatting
     function formatExcel() {
         if (selectedFileIndex === -1 || !files[selectedFileIndex]) {
             updateStatus('No file selected for formatting');
@@ -225,11 +229,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const file = files[selectedFileIndex];
         updateStatus(`Formatting ${file.name}...`);
         
-        // Create FormData to send to server
         const formData = new FormData();
         formData.append('file', file);
         
-        // Add formatting options
         formData.append('removeBlankLines', removeBlankLines.checked);
         formData.append('capitalizeSentences', capitalizeSentences.checked);
         formData.append('addPeriods', addPeriods.checked);
@@ -238,10 +240,8 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('removeLoneQuotes', removeLoneQuotes.checked);
         formData.append('removeEllipsis', removeEllipsis.checked);
         
-        // Disable format button during processing
         formatButton.disabled = true;
         
-        // Send to server for processing
         fetch('/api/format-excel', {
             method: 'POST',
             body: formData
@@ -253,13 +253,11 @@ document.addEventListener('DOMContentLoaded', function() {
             return response.blob();
         })
         .then(blob => {
-            // Generate modified filename
             const lastDotIndex = file.name.lastIndexOf('.');
             const baseName = lastDotIndex !== -1 ? file.name.substring(0, lastDotIndex) : file.name;
             const extension = lastDotIndex !== -1 ? file.name.substring(lastDotIndex) : '';
             const modifiedFileName = `${baseName}_modified${extension}`;
             
-            // Create download link
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -267,15 +265,12 @@ document.addEventListener('DOMContentLoaded', function() {
             document.body.appendChild(a);
             a.click();
             
-            // Cleanup
             setTimeout(function() {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             }, 0);
             
             updateStatus(`Formatted and saved as ${modifiedFileName}`);
-            
-            // Reload the file to show the changes
             loadExcelPreview(file);
         })
         .catch(error => {
@@ -283,16 +278,10 @@ document.addEventListener('DOMContentLoaded', function() {
             updateStatus(`Error during formatting: ${error.message}`);
         })
         .finally(() => {
-            // Re-enable format button
             updateFormatButtonState();
         });
     }
     
-    // These functions are now handled by the server-side Python code
-    
-    // File saving is now handled as part of the formatExcel function
-    
-    // Utility Functions
     function updateStatus(message) {
         statusBar.textContent = message;
         console.log(message);
@@ -302,15 +291,11 @@ document.addEventListener('DOMContentLoaded', function() {
         formatButton.disabled = selectedFileIndex === -1 || !workbook;
     }
     
-    // Server shutdown function
     function shutdownServer() {
         if (confirm('Are you sure you want to shut down the server?')) {
             updateStatus('Shutting down server...');
-            
-            // Disable the shutdown button to prevent multiple clicks
             shutdownButton.disabled = true;
             
-            // Send request to shutdown endpoint
             fetch('/shutdown')
                 .then(response => {
                     if (response.ok) {
@@ -322,9 +307,206 @@ document.addEventListener('DOMContentLoaded', function() {
                 .catch(error => {
                     console.error('Error shutting down server:', error);
                     updateStatus(`Error shutting down server: ${error.message}`);
-                    // Re-enable the button if there was an error
                     shutdownButton.disabled = false;
                 });
         }
+    }
+
+    // Video to PDF Code
+    const videoDropZone = document.getElementById('video-drop-zone');
+    const excelDropZone = document.getElementById('excel-drop-zone');
+    const videoInput = document.getElementById('video-input');
+    const excelInput = document.getElementById('excel-input');
+    const videoInfo = document.getElementById('video-info');
+    const excelInfo = document.getElementById('excel-info');
+    const processBtn = document.getElementById('process-btn');
+    const progressBar = document.querySelector('.progress');
+    const progressBarInner = document.querySelector('.progress-bar');
+    const resultContainer = document.getElementById('result-container');
+    const resultMessage = document.getElementById('result-message');
+    const downloadLink = document.getElementById('download-link');
+    const cleanupBtn = document.getElementById('cleanup-btn');
+    const errorContainer = document.getElementById('error-container');
+    
+    let videoFile = null;
+    let scriptFile = null;
+    let jobId = null;
+    
+    setupDropZone(videoDropZone, videoInput, handleVideoFile);
+    setupDropZone(excelDropZone, excelInput, handleScriptFile);
+    
+    videoInput.addEventListener('change', function() {
+        if (this.files.length) {
+            handleVideoFile(this.files[0]);
+        }
+    });
+    
+    excelInput.addEventListener('change', function() {
+        if (this.files.length) {
+            handleScriptFile(this.files[0]);
+        }
+    });
+    
+    processBtn.addEventListener('click', function() {
+        if (videoFile && scriptFile) {
+            uploadFiles();
+        }
+    });
+    
+    cleanupBtn.addEventListener('click', function() {
+        if (jobId) {
+            cleanupFiles(jobId);
+        }
+    });
+    
+    function setupDropZone(dropZoneElement, inputElement, handleFile) {
+        dropZoneElement.addEventListener('click', function() {
+            inputElement.click();
+        });
+        
+        dropZoneElement.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.classList.add('dragover');
+        });
+        
+        ['dragleave', 'dragend'].forEach(type => {
+            dropZoneElement.addEventListener(type, function() {
+                this.classList.remove('dragover');
+            });
+        });
+        
+        dropZoneElement.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('dragover');
+            
+            if (e.dataTransfer.files.length) {
+                inputElement.files = e.dataTransfer.files;
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+    }
+    
+    function handleVideoFile(file) {
+        if (!file.type.startsWith('video/')) {
+            alert('Please select a valid video file.');
+            return;
+        }
+        
+        videoFile = file;
+        videoInfo.textContent = `Selected: ${file.name} (${formatFileSize(file.size)})`;
+        updateProcessButton();
+    }
+    
+    function handleScriptFile(file) {
+        const validExcelTypes = [
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel.sheet.macroEnabled.12'
+        ];
+        
+        if (!validExcelTypes.includes(file.type) && 
+            !file.name.endsWith('.xlsx') && 
+            !file.name.endsWith('.xls')) {
+            alert('Please select a valid Excel file.');
+            return;
+        }
+        
+        scriptFile = file;
+        excelInfo.textContent = `Selected: ${file.name} (${formatFileSize(file.size)})`;
+        updateProcessButton();
+    }
+    
+    function updateProcessButton() {
+        processBtn.disabled = !(videoFile && scriptFile);
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    function uploadFiles() {
+        resultContainer.style.display = 'none';
+        errorContainer.style.display = 'none';
+        progressBar.style.display = 'flex';
+        progressBarInner.style.width = '10%';
+        
+        const formData = new FormData();
+        formData.append('video', videoFile);
+        formData.append('excel', scriptFile);
+        
+        fetch('/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showError(data.error);
+                return;
+            }
+            
+            jobId = data.job_id;
+            progressBarInner.style.width = '50%';
+            processFiles(jobId);
+        })
+        .catch(error => {
+            showError('Upload failed: ' + error.message);
+        });
+    }
+    
+    function processFiles(jobId) {
+        fetch(`/process/${jobId}`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            progressBarInner.style.width = '100%';
+            
+            if (data.error) {
+                showError(data.error);
+                return;
+            }
+            
+            resultMessage.textContent = `Your PDF has been generated successfully!`;
+            downloadLink.href = data.download_url;
+            resultContainer.style.display = 'block';
+            
+            setTimeout(() => {
+                progressBar.style.display = 'none';
+            }, 1000);
+        })
+        .catch(error => {
+            showError('Processing failed: ' + error.message);
+        });
+    }
+    
+    function cleanupFiles(jobId) {
+        fetch(`/cleanup/${jobId}`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Temporary files have been deleted.');
+                cleanupBtn.disabled = true;
+            } else {
+                alert('Failed to delete temporary files: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Cleanup failed: ' + error.message);
+        });
+    }
+    
+    function showError(message) {
+        errorContainer.textContent = message;
+        errorContainer.style.display = 'block';
+        progressBar.style.display = 'none';
     }
 });

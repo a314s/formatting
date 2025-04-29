@@ -3,74 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Excel Formatter</title>
+    <title>Document Processing Tools</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Excel Formatter</h1>
+            <h1>Document Processing Tools</h1>
         </header>
         
-        <main>
-            <div class="file-queue-section">
-                <h2>File Queue</h2>
-                <div id="drop-zone" class="drop-zone">
-                    <p>Drag Excel files here or</p>
-                    <input type="file" id="file-input" accept=".xlsx,.xlsm,.xltx,.xltm" multiple>
-                    <label for="file-input" class="file-input-label">Browse Files</label>
-                </div>
-                <div id="file-queue" class="file-queue"></div>
+        <div class="tab-container">
+            <div class="tab-navigation">
+                <button class="tab-button active" data-tab="excel-formatter">Excel Formatter</button>
+                <button class="tab-button" data-tab="video-converter">Video to PDF</button>
             </div>
-            
-            <div class="preview-section">
-                <h2>Excel Preview</h2>
-                <div id="excel-preview" class="excel-preview">
-                    <p class="no-file-selected">No file selected</p>
+
+            <div class="tab-content">
+                <!-- Excel Formatter Tab -->
+                <div class="tab-pane active" id="excel-formatter">
+                    <main>
+                        <div class="file-queue-section">
+                            <h2>File Queue</h2>
+                            <div id="drop-zone" class="drop-zone">
+                                <p>Drag Excel files here or</p>
+                                <input type="file" id="file-input" accept=".xlsx,.xlsm,.xltx,.xltm" multiple>
+                                <label for="file-input" class="file-input-label">Browse Files</label>
+                            </div>
+                            <div id="file-queue" class="file-queue"></div>
+                        </div>
+                        
+                        <div class="preview-section">
+                            <h2>Excel Preview</h2>
+                            <div id="excel-preview" class="excel-preview">
+                                <p class="no-file-selected">No file selected</p>
+                            </div>
+                            
+                            <div class="formatting-options">
+                                <h3>Formatting Options</h3>
+                                <div class="options-grid">
+                                    <div class="option">
+                                        <input type="checkbox" id="remove-blank-lines" checked>
+                                        <label for="remove-blank-lines">Remove blank lines</label>
+                                    </div>
+                                    <div class="option">
+                                        <input type="checkbox" id="capitalize-sentences" checked>
+                                        <label for="capitalize-sentences">Capitalize sentences</label>
+                                    </div>
+                                    <div class="option">
+                                        <input type="checkbox" id="add-periods" checked>
+                                        <label for="add-periods">Add periods to end of lines</label>
+                                    </div>
+                                    <div class="option">
+                                        <input type="checkbox" id="remove-spaces-quotes" checked>
+                                        <label for="remove-spaces-quotes">Remove spaces from single letters in quotes</label>
+                                    </div>
+                                    <div class="option">
+                                        <input type="checkbox" id="remove-spaces-unquoted" checked>
+                                        <label for="remove-spaces-unquoted">Remove spaces from 3+ single characters (unquoted)</label>
+                                    </div>
+                                    <div class="option">
+                                        <input type="checkbox" id="remove-lone-quotes" checked>
+                                        <label for="remove-lone-quotes">Remove lone quotation marks</label>
+                                    </div>
+                                    <div class="option">
+                                        <input type="checkbox" id="remove-ellipsis" checked>
+                                        <label for="remove-ellipsis">Remove ellipsis (...)</label>
+                                    </div>
+                                </div>
+                                
+                                <button id="format-button" class="format-button" disabled>Format Excel</button>
+                                <button id="shutdown-button" class="shutdown-button">Turn Off Server</button>
+                            </div>
+                        </div>
+                    </main>
                 </div>
-                
-                <div class="formatting-options">
-                    <h3>Formatting Options</h3>
-                    <div class="options-grid">
-                        <div class="option">
-                            <input type="checkbox" id="remove-blank-lines" checked>
-                            <label for="remove-blank-lines">Remove blank lines</label>
-                        </div>
-                        <div class="option">
-                            <input type="checkbox" id="capitalize-sentences" checked>
-                            <label for="capitalize-sentences">Capitalize sentences</label>
-                        </div>
-                        <div class="option">
-                            <input type="checkbox" id="add-periods" checked>
-                            <label for="add-periods">Add periods to end of lines</label>
-                        </div>
-                        <div class="option">
-                            <input type="checkbox" id="remove-spaces-quotes" checked>
-                            <label for="remove-spaces-quotes">Remove spaces from single letters in quotes</label>
-                        </div>
-                        <div class="option">
-                            <input type="checkbox" id="remove-spaces-unquoted" checked>
-                            <label for="remove-spaces-unquoted">Remove spaces from 3+ single characters (unquoted)</label>
-                        </div>
-                        <div class="option">
-                            <input type="checkbox" id="remove-lone-quotes" checked>
-                            <label for="remove-lone-quotes">Remove lone quotation marks</label>
-                        </div>
-                        <div class="option">
-                            <input type="checkbox" id="remove-ellipsis" checked>
-                            <label for="remove-ellipsis">Remove ellipsis (...)</label>
+
+                <!-- Video to PDF Tab -->
+                <div class="tab-pane" id="video-converter">
+                    <div class="row">
+                        <div class="col-md-8 offset-md-2">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="alert alert-info">
+                                        <p>This tool converts video tutorials into PDF documents with screenshots and text. Upload your video file and Excel sheet with the script text.</p>
+                                    </div>
+                                    
+                                    <form id="upload-form">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Video File:</label>
+                                                <div class="drop-zone" id="video-drop-zone">
+                                                    <span class="drop-zone__prompt">Drop video file here or click to upload</span>
+                                                    <input type="file" name="video" class="drop-zone__input" id="video-input" accept="video/*">
+                                                </div>
+                                                <div id="video-info" class="mt-2"></div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Excel Script File:</label>
+                                                <div class="drop-zone" id="excel-drop-zone">
+                                                    <span class="drop-zone__prompt">Drop Excel file here or click to upload</span>
+                                                    <input type="file" name="excel" class="drop-zone__input" id="excel-input" accept=".xlsx,.xls">
+                                                </div>
+                                                <div id="excel-info" class="mt-2"></div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="d-grid gap-2 mt-4">
+                                            <button type="button" id="process-btn" class="btn btn-primary" disabled>Process Files</button>
+                                            <div class="row mt-3">
+                                                <div class="col-md-6">
+                                                    <a href="/get_frames" class="btn btn-success w-100">Get Frames</a>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <a href="/convert_to_pdf" class="btn btn-info w-100">Convert to PDF</a>
+                                                </div>
+                                            </div>
+                                            <a href="/settings" class="btn btn-outline-secondary mt-3">Settings</a>
+                                        </div>
+                                    </form>
+                                    
+                                    <div class="progress mt-4">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                    
+                                    <div id="error-container" class="alert alert-danger mt-4"></div>
+                                    
+                                    <div id="result-container" class="alert alert-success mt-4">
+                                        <h4>Processing Complete!</h4>
+                                        <p id="result-message"></p>
+                                        <div class="d-grid gap-2 mt-3">
+                                            <a id="download-link" href="#" class="btn btn-success">Download PDF</a>
+                                            <button id="cleanup-btn" class="btn btn-outline-danger">Delete Temporary Files</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    
-                    <button id="format-button" class="format-button" disabled>Format Excel</button>
-                    <button id="shutdown-button" class="shutdown-button">Turn Off Server</button>
                 </div>
             </div>
-        </main>
+        </div>
         
         <div id="status-bar" class="status-bar">Ready</div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="script.js"></script>
 </body>
