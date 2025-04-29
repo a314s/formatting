@@ -6,6 +6,34 @@ let currentExcelSession = null;
 let wordFiles = new Map();  // Store Word files
 let pdfFiles = new Map();   // Store converted PDFs
 
+// Helper function for setting up drop zones
+function setupDropZone(dropZoneElement, inputElement, handleFile) {
+    dropZoneElement.addEventListener('click', function() {
+        inputElement.click();
+    });
+    
+    dropZoneElement.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('dragover');
+    });
+    
+    ['dragleave', 'dragend'].forEach(type => {
+        dropZoneElement.addEventListener(type, function() {
+            this.classList.remove('dragover');
+        });
+    });
+    
+    dropZoneElement.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+        
+        if (e.dataTransfer.files.length) {
+            inputElement.files = e.dataTransfer.files;
+            handleFile(e.dataTransfer.files[0]);
+        }
+    });
+}
+
 function setupWordConverter() {
     const wordDropZone = document.getElementById('word-drop-zone');
     const wordInput = document.getElementById('word-input');
@@ -176,7 +204,7 @@ function convertWordToPDF(file) {
 }
 
 function downloadPDF(fileId, fileName) {
-    window.location.href = `/download/pdf/${fileId}/${fileName}`;
+    window.location.href = `/download/${fileId}/${fileName}`; // Removed '/pdf/' segment
 }
 
 function showWordConverterError(message) {
@@ -295,7 +323,10 @@ document.addEventListener('DOMContentLoaded', function() {
             tabPanes.forEach(pane => pane.classList.remove('active'));
             
             this.classList.add('active');
-            document.getElementById(tabId).classList.add('active');
+            const targetPane = document.querySelector(`.tab-pane[data-tab="${tabId}"]`);
+            if (targetPane) {
+                targetPane.classList.add('active');
+            }
 
             // Load history if needed
             if (tabId === 'history') {
@@ -639,33 +670,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    function setupDropZone(dropZoneElement, inputElement, handleFile) {
-        dropZoneElement.addEventListener('click', function() {
-            inputElement.click();
-        });
-        
-        dropZoneElement.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            this.classList.add('dragover');
-        });
-        
-        ['dragleave', 'dragend'].forEach(type => {
-            dropZoneElement.addEventListener(type, function() {
-                this.classList.remove('dragover');
-            });
-        });
-        
-        dropZoneElement.addEventListener('drop', function(e) {
-            e.preventDefault();
-            this.classList.remove('dragover');
-            
-            if (e.dataTransfer.files.length) {
-                inputElement.files = e.dataTransfer.files;
-                handleFile(e.dataTransfer.files[0]);
-            }
-        });
-    }
-    
     function handleVideoFile(file) {
         if (!file.type.startsWith('video/')) {
             alert('Please select a valid video file.');
@@ -818,29 +822,28 @@ document.addEventListener('DOMContentLoaded', function() {
     const liveExcelTable = document.getElementById('live-excel-table').querySelector('tbody');
     let savedExcelPath = null;
 
-    // Create hidden directory input for folder selection
-    const dirInput = document.createElement('input');
-    dirInput.type = 'file';
-    dirInput.setAttribute('webkitdirectory', '');
-    dirInput.setAttribute('directory', '');
-    dirInput.setAttribute('mozdirectory', '');
-    dirInput.style.display = 'none';
-    document.body.appendChild(dirInput);
+    // Removed hidden dirInput logic
 
-    // Handle directory selection
-    dirInput.addEventListener('change', function() {
-        if (this.files.length > 0) {
-            // Get the directory path from the first file
-            const path = this.files[0].path;
-            // Extract the directory path by removing the filename
-            const dirPath = path.substring(0, path.lastIndexOf('\\'));
-            saveLocation.value = dirPath;
-        }
-    });
-
-    // Add click handler for browse button
+    // Add click handler for browse button to call backend
     browseLocation.addEventListener('click', function() {
-        dirInput.click();
+        fetch('/api/browse-directory')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to browse directory');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.path) {
+                    saveLocation.value = data.path;
+                } else if (data.error) {
+                    alert(`Error selecting directory: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error browsing directory:', error);
+                alert('Failed to open directory browser.');
+            });
     });
 
     startMonitoringBtn.addEventListener('click', function() {

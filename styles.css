@@ -27,38 +27,6 @@ body {
     flex-direction: column;
 }
 
-.tab-navigation {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    background: #fff;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-.tab-button {
-    padding: 10px 20px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background: #fff;
-    color: #333;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-weight: 500;
-}
-
-.tab-button:hover {
-    background: #f8f9fa;
-    border-color: #007bff;
-}
-
-.tab-button.active {
-    background: #007bff;
-    color: #fff;
-    border-color: #0056b3;
-}
-
 .tab-content {
     flex: 1;
     display: flex;
@@ -71,7 +39,7 @@ body {
 }
 
 .tab-pane.active {
-    display: block;
+    display: block; /* Changed from flex to block */
 }
 
 header {
@@ -95,36 +63,6 @@ header {
 .header-content .shutdown-button {
     padding: 8px 16px;
     font-size: 14px;
-}
-
-/* Tab Navigation */
-.tab-navigation {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    background: #fff;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-.tab-button {
-    padding: 10px 20px;
-    border: none;
-    border-radius: 4px;
-    background: #f0f0f0;
-    color: #333;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.tab-button:hover {
-    background: #e0e0e0;
-}
-
-.tab-button.active {
-    background: #007bff;
-    color: #fff;
 }
 
 h1 {
@@ -189,13 +127,6 @@ h3 {
     padding: 20px;
 }
 
-.tab-pane {
-    display: none;
-}
-
-.tab-pane.active {
-    display: block;
-}
 
 /* Excel Formatter Styles */
 main {

@@ -21,6 +21,8 @@ import time
 from datetime import datetime
 import win32com.client
 import pythoncom
+import tkinter as tk
+from tkinter import filedialog
 
 # Import functions from the formatting script
 from formatting import clean_text, remove_blank_rows, process_excel
@@ -181,6 +183,9 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'port': WS_PORT}).encode())
             return
+        elif path == '/api/browse-directory':
+            self.handle_browse_directory()
+            return
         elif path == '/api/history':
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -195,9 +200,15 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
                 job_id = parts[2]
                 filename = parts[3]
                 job_dir = os.path.join(UPLOAD_DIR, job_id)
-                results_dir = os.path.join(job_dir, 'results')
-                file_path = os.path.join(results_dir, filename)
                 
+                # Check if it's a Word-to-PDF download (specific filename)
+                if filename == 'document.pdf':
+                    file_path = os.path.join(job_dir, filename)
+                else:
+                    # Assume other downloads (like Video-to-PDF) are in 'results'
+                    results_dir = os.path.join(job_dir, 'results')
+                    file_path = os.path.join(results_dir, filename)
+
                 if os.path.exists(file_path):
                     with open(file_path, 'rb') as f:
                         self.send_response(200)
@@ -494,6 +505,86 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_error(500, str(e))
 
+    def handle_browse_directory(self):
+        """Handles request to open a directory selection dialog."""
+        try:
+            # We need a Tk root window, but we don't want to show it
+            root = tk.Tk()
+            root.withdraw()  # Hide the main window
+            root.attributes('-topmost', True) # Bring the dialog to the front
+
+            # Open the directory selection dialog
+            selected_path = filedialog.askdirectory(
+                title="Select Save Location",
+                initialdir=os.path.expanduser("~") # Start in user's home directory
+            )
+            root.destroy() # Close the Tkinter root window
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            if selected_path:
+                self.wfile.write(json.dumps({'path': selected_path}).encode())
+            else:
+                # User cancelled the dialog
+                self.wfile.write(json.dumps({'path': None}).encode())
+
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': str(e)}).encode())
+
+    def get_upload_history(self):
+        history = []
+        if os.path.exists(UPLOAD_DIR):
+            for job_id in os.listdir(UPLOAD_DIR):
+                job_dir = os.path.join(UPLOAD_DIR, job_id)
+                if os.path.isdir(job_dir):
+                    # Get directory creation time
+                    try:
+                        created_time = os.path.getctime(job_dir)
+                        created_date = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
+                    except OSError:
+                        created_date = "Unknown Date" # Handle potential errors reading metadata
+
+                    # Determine job type and files
+                    files = []
+                    job_type = "Unknown"
+
+                    # Check for Video to PDF markers
+                    if os.path.exists(os.path.join(job_dir, 'video.mp4')):
+                        job_type = "Video to PDF"
+                        files.append("video.mp4")
+                        if os.path.exists(os.path.join(job_dir, 'script.xlsx')):
+                            files.append("script.xlsx")
+                    # Check for Word to PDF markers
+                    elif os.path.exists(os.path.join(job_dir, 'document.docx')):
+                         job_type = "Word to PDF"
+                         files.append("document.docx") # Original Word file name might be lost, using generic
+
+                    # Check for results (both types might have results)
+                    results_dir = os.path.join(job_dir, 'results')
+                    if os.path.exists(results_dir):
+                        for file in os.listdir(results_dir):
+                            if file.endswith(('.pdf', '.docx')):
+                                files.append(file)
+                    # Check for Word-to-PDF result directly in job_dir
+                    elif job_type == "Word to PDF" and os.path.exists(os.path.join(job_dir, 'document.pdf')):
+                         files.append('document.pdf')
+
+
+                    history.append({
+                        'id': job_id,
+                        'date': created_date,
+                        'type': job_type,
+                        'files': files
+                    })
+
+        # Sort by date, newest first
+        history.sort(key=lambda x: x['date'], reverse=True)
+        return history
+
 async def handle_websocket(websocket, path):
     try:
         # First message should be session ID
@@ -540,43 +631,6 @@ async def handle_websocket(websocket, path):
     
     except websockets.exceptions.ConnectionClosed:
         pass
-
-def get_upload_history(self):
-    history = []
-    if os.path.exists(UPLOAD_DIR):
-        for job_id in os.listdir(UPLOAD_DIR):
-            job_dir = os.path.join(UPLOAD_DIR, job_id)
-            if os.path.isdir(job_dir):
-                # Get directory creation time
-                created_time = os.path.getctime(job_dir)
-                created_date = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
-                
-                # Determine job type and files
-                files = []
-                job_type = "Unknown"
-                
-                if os.path.exists(os.path.join(job_dir, 'video.mp4')):
-                    job_type = "Video to PDF"
-                    files.append("video.mp4")
-                    if os.path.exists(os.path.join(job_dir, 'script.xlsx')):
-                        files.append("script.xlsx")
-                
-                results_dir = os.path.join(job_dir, 'results')
-                if os.path.exists(results_dir):
-                    for file in os.listdir(results_dir):
-                        if file.endswith(('.pdf', '.docx')):
-                            files.append(file)
-                
-                history.append({
-                    'id': job_id,
-                    'date': created_date,
-                    'type': job_type,
-                    'files': files
-                })
-    
-    # Sort by date, newest first
-    history.sort(key=lambda x: x['date'], reverse=True)
-    return history
 
 def run_websocket_server():
     asyncio.set_event_loop(asyncio.new_event_loop())
