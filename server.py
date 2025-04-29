@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 import io
 import email
+from werkzeug.utils import secure_filename # Added import
 import websockets
 import asyncio
 import keyboard
@@ -122,14 +123,20 @@ class MultipartFormParser:
                     key, value = line.split(':', 1)
                     headers[key.strip().lower()] = value.strip()
             
-            # Get field name from Content-Disposition
+            # Get field name and filename from Content-Disposition
+            filename = None
+            name = None
             if 'content-disposition' in headers:
                 disposition = headers['content-disposition']
                 items = disposition.split(';')
                 for item in items:
-                    if 'name=' in item:
+                    item = item.strip()
+                    if item.startswith('name='):
                         name = item.split('=')[1].strip('"')
-                        break
+                    elif item.startswith('filename='):
+                         filename = item.split('=')[1].strip('"')
+                if not name: # If name wasn't found, skip this part
+                    continue
             else:
                 continue
             
@@ -142,10 +149,15 @@ class MultipartFormParser:
                     break
                 content.write(line)
             
-            # Store field value
+            # Store field value and filename
             value = content.getvalue().strip(b'\r\n')
-            fields[name.encode()] = value
-            
+            if filename:
+                 # Store as a tuple: (filename, content)
+                 fields[name.encode()] = (filename.encode(), value)
+            else:
+                 # Store just the value
+                 fields[name.encode()] = value
+
             if remainbytes <= 0:
                 break
         
@@ -379,17 +391,30 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             if not form or b'video' not in form or b'excel' not in form:
                 raise ValueError("Missing video or excel file")
 
+            # Extract filenames and content from the form data
+            video_filename_bytes, video_content = form[b'video']
+            excel_filename_bytes, excel_content = form[b'excel']
+
+            # Decode filenames
+            video_filename = video_filename_bytes.decode('utf-8', errors='ignore')
+            excel_filename = excel_filename_bytes.decode('utf-8', errors='ignore')
+
+            # Sanitize filenames (optional but recommended)
+            video_filename_safe = secure_filename(video_filename)
+            excel_filename_safe = secure_filename(excel_filename)
+
             job_id = os.urandom(16).hex()
             job_dir = os.path.join(UPLOAD_DIR, job_id)
             os.makedirs(job_dir)
 
-            video_path = os.path.join(job_dir, 'video.mp4')
-            excel_path = os.path.join(job_dir, 'script.xlsx')
-            
+            # Use original (sanitized) filenames
+            video_path = os.path.join(job_dir, video_filename_safe)
+            excel_path = os.path.join(job_dir, excel_filename_safe)
+
             with open(video_path, 'wb') as f:
-                f.write(form[b'video'])
+                f.write(video_content)
             with open(excel_path, 'wb') as f:
-                f.write(form[b'excel'])
+                f.write(excel_content)
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -407,11 +432,19 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             if not os.path.exists(job_dir):
                 raise ValueError("Invalid job ID")
 
-            video_path = os.path.join(job_dir, 'video.mp4')
-            excel_path = os.path.join(job_dir, 'script.xlsx')
+            # Find the video and excel files in the job directory
+            video_path = None
+            excel_path = None
+            for filename in os.listdir(job_dir):
+                if filename.lower().endswith(('.mp4', '.avi', '.mov', '.wmv', '.flv')): # Add other video extensions if needed
+                    video_path = os.path.join(job_dir, filename)
+                elif filename.lower().endswith(('.xlsx', '.xls')):
+                    excel_path = os.path.join(job_dir, filename)
 
+            if not video_path or not excel_path:
+                 raise ValueError(f"Missing required video or excel file in job directory: {job_dir}")
             if not os.path.exists(video_path) or not os.path.exists(excel_path):
-                raise ValueError("Missing required files")
+                 raise ValueError(f"Required files not found: Video={video_path}, Excel={excel_path}")
 
             # Create frames folder
             frames_folder = os.path.join(job_dir, 'frames')
@@ -419,10 +452,10 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
 
             # Create required folders
             temp_folder = os.path.join(job_dir, 'temp')
-            frames_folder = os.path.join(job_dir, 'frames')
+            # frames_folder is already defined and created
             results_folder = os.path.join(job_dir, 'results')
             os.makedirs(temp_folder, exist_ok=True)
-            os.makedirs(frames_folder, exist_ok=True)
+            # os.makedirs(frames_folder, exist_ok=True) # Redundant
             os.makedirs(results_folder, exist_ok=True)
 
             # Copy required assets to results directory
