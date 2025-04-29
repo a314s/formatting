@@ -1,4 +1,16 @@
+// WebSocket connection
+let ws = null;
+let currentExcelSession = null;
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Get WebSocket port from server
+    fetch('/ws-port')
+        .then(response => response.json())
+        .then(data => {
+            window.wsPort = data.port;
+        })
+        .catch(console.error);
+
     // Tab Switching
     const tabButtons = document.querySelectorAll('.tab-button');
     const tabPanes = document.querySelectorAll('.tab-pane');
@@ -437,14 +449,21 @@ document.addEventListener('DOMContentLoaded', function() {
         progressBarInner.style.width = '10%';
         
         const formData = new FormData();
-        formData.append('video', videoFile);
-        formData.append('excel', scriptFile);
+        formData.append('video', videoFile, videoFile.name);
+        formData.append('excel', scriptFile, scriptFile.name);
         
         fetch('/upload', {
             method: 'POST',
             body: formData
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    throw new Error(text);
+                });
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 showError(data.error);
@@ -462,9 +481,19 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function processFiles(jobId) {
         fetch(`/process/${jobId}`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json'
+            }
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    throw new Error(text);
+                });
+            }
+            return response.json();
+        })
         .then(data => {
             progressBarInner.style.width = '100%';
             
@@ -473,7 +502,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            resultMessage.textContent = `Your PDF has been generated successfully!`;
+            resultMessage.textContent = `Your document has been generated successfully!`;
             downloadLink.href = data.download_url;
             resultContainer.style.display = 'block';
             
@@ -508,5 +537,142 @@ document.addEventListener('DOMContentLoaded', function() {
         errorContainer.textContent = message;
         errorContainer.style.display = 'block';
         progressBar.style.display = 'none';
+    }
+
+    // Live Excel Creator Code
+    const startMonitoringBtn = document.getElementById('start-monitoring');
+    const doneButton = document.getElementById('done-button');
+    const sendToFormatterBtn = document.getElementById('send-to-formatter');
+    const excelFilename = document.getElementById('excel-filename');
+    const saveLocation = document.getElementById('save-location');
+    const browseLocation = document.getElementById('browse-location');
+    const previewSection = document.querySelector('#live-excel .preview-section');
+    const liveExcelTable = document.getElementById('live-excel-table').querySelector('tbody');
+    let savedExcelPath = null;
+
+    // Create hidden file input for directory selection
+    const dirInput = document.createElement('input');
+    dirInput.type = 'file';
+    dirInput.setAttribute('webkitdirectory', '');
+    dirInput.setAttribute('directory', '');
+    dirInput.style.display = 'none';
+    document.body.appendChild(dirInput);
+
+    // Handle directory selection
+    dirInput.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            saveLocation.value = this.files[0].path;
+        }
+    });
+
+    // Add click handler for browse button
+    browseLocation.addEventListener('click', function() {
+        dirInput.click();
+    });
+
+    startMonitoringBtn.addEventListener('click', function() {
+        if (!excelFilename.value || !saveLocation.value) {
+            alert('Please enter a filename and choose a save location');
+            return;
+        }
+
+        // Start new Excel session
+        fetch('/api/start-excel-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filename: excelFilename.value,
+                saveLocation: saveLocation.value
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            currentExcelSession = data.session_id;
+            connectWebSocket();
+            previewSection.style.display = 'block';
+            startMonitoringBtn.disabled = true;
+        })
+        .catch(error => {
+            console.error('Error starting Excel session:', error);
+            alert('Failed to start Excel session');
+        });
+    });
+
+    doneButton.addEventListener('click', function() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'done' }));
+        }
+    });
+
+    sendToFormatterBtn.addEventListener('click', function() {
+        if (savedExcelPath) {
+            // Create a File object from the saved Excel file
+            fetch(savedExcelPath)
+                .then(response => response.blob())
+                .then(blob => {
+                    const file = new File([blob], excelFilename.value + '.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    addFilesToQueue([file]);
+                    
+                    // Switch to Excel Formatter tab
+                    const formatterTab = document.querySelector('[data-tab="excel-formatter"]');
+                    formatterTab.click();
+                })
+                .catch(error => {
+                    console.error('Error loading Excel file:', error);
+                    alert('Failed to load Excel file for formatting');
+                });
+        }
+    });
+
+    function connectWebSocket() {
+        ws = new WebSocket(`ws://localhost:${window.wsPort}`);
+
+        ws.onopen = function() {
+            // Send session ID as first message
+            ws.send(currentExcelSession);
+        };
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'update') {
+                // Add new row to preview table
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.textContent = data.text;
+                row.appendChild(cell);
+                liveExcelTable.appendChild(row);
+                
+                // Scroll to bottom
+                const preview = document.getElementById('live-excel-preview');
+                preview.scrollTop = preview.scrollHeight;
+            } else if (data.type === 'saved') {
+                savedExcelPath = data.path;
+                sendToFormatterBtn.disabled = false;
+                alert(`Excel file saved successfully at: ${data.path}`);
+                // Reset UI
+                previewSection.style.display = 'none';
+                startMonitoringBtn.disabled = false;
+                liveExcelTable.innerHTML = '';
+                excelFilename.value = '';
+                saveLocation.value = '';
+                ws.close();
+            }
+        };
+
+        ws.onerror = function(error) {
+            console.error('WebSocket error:', error);
+            alert('Error in Excel monitoring. Please try again.');
+        };
+
+        ws.onclose = function() {
+            if (currentExcelSession) {
+                currentExcelSession = null;
+                previewSection.style.display = 'none';
+                startMonitoringBtn.disabled = false;
+            }
+        };
     }
 });

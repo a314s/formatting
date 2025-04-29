@@ -17,6 +17,7 @@
             <div class="tab-navigation">
                 <button class="tab-button active" data-tab="excel-formatter">Excel Formatter</button>
                 <button class="tab-button" data-tab="video-converter">Video to PDF</button>
+                <button class="tab-button" data-tab="live-excel">Live Excel Creator</button>
             </div>
 
             <div class="tab-content">
@@ -139,6 +140,42 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Excel Creator Tab -->
+            <div class="tab-pane" id="live-excel">
+                <div class="live-excel-container">
+                    <div class="setup-section">
+                        <div class="form-group">
+                            <label for="excel-filename">Excel File Name:</label>
+                            <input type="text" id="excel-filename" class="form-control" placeholder="Enter file name">
+                        </div>
+                        <div class="form-group">
+                            <label for="save-location">Save Location:</label>
+                            <div class="input-group">
+                                <input type="text" id="save-location" class="form-control" placeholder="Choose save location" readonly>
+                                <button type="button" id="browse-location" class="btn btn-secondary">Browse</button>
+                            </div>
+                        </div>
+                        <button id="start-monitoring" class="btn btn-primary">Start Monitoring</button>
+                    </div>
+                    
+                    <div class="preview-section" style="display: none;">
+                        <h3>Live Excel Preview</h3>
+                        <div id="live-excel-preview" class="excel-preview">
+                            <table id="live-excel-table">
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                        <div class="monitoring-status">
+                            <p>Monitoring for Ctrl+C... Press Esc to stop.</p>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button id="done-button" class="btn btn-success">Done</button>
+                            <button id="send-to-formatter" class="btn btn-primary" disabled>Send to Formatter</button>
                         </div>
                     </div>
                 </div>
