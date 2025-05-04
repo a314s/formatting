@@ -4,8 +4,8 @@ from google.cloud import texttospeech
 from google.oauth2 import service_account
 
 # --- Configuration ---
-# Hardcoded path to the credentials file
-CREDENTIALS_PATH = r"C:\Users\arons\Desktop\formatting\uploads\sapheb-b87c6918d4ef.json"
+# Use relative path to the credentials file
+CREDENTIALS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads', 'sapheb-b87c6918d4ef.json')
 
 # --- Helper Functions ---
 

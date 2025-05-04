@@ -148,10 +148,9 @@
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Live Excel Creator Tab -->
-            <div class="tab-pane" id="live-excel" data-tab="live-excel">
+                <!-- Live Excel Creator Tab -->
+                <div class="tab-pane" id="live-excel" data-tab="live-excel">
                 <div class="live-excel-container">
                     <div class="setup-section">
                         <div class="form-group">
@@ -244,40 +243,84 @@
                     </div>
                     <div id="history-status" class="mt-3"></div>
                 </div>
-<!-- TTS Tab -->
-            <div class="tab-pane" id="tts" data-tab="tts">
-                <div class="tts-container">
-                    <h2>TTS Converter</h2>
-                    <div class="row">
-                        <div class="col-md-8 offset-md-2">
-                            <div class="card">
-                                <div class="card-body">
-                                    <div class="mb-3">
-                                        <label for="tts-text" class="form-label">Text to Convert:</label>
-                                        <textarea class="form-control" id="tts-text" rows="5" placeholder="Enter text here..."></textarea>
+                </div>
+
+                <!-- TTS Tab -->
+                <div class="tab-pane" id="tts" data-tab="tts">
+                    <div class="tts-container">
+                        <h2>TTS Converter</h2>
+                        <div class="row">
+                            <div class="col-md-8 offset-md-2">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <ul class="nav nav-tabs" role="tablist">
+                                            <li class="nav-item" role="presentation">
+                                                <button class="nav-link active" id="text-tab" data-bs-toggle="tab" data-bs-target="#text-input" type="button" role="tab">Text Input</button>
+                                            </li>
+                                            <li class="nav-item" role="presentation">
+                                                <button class="nav-link" id="excel-tab" data-bs-toggle="tab" data-bs-target="#excel-input" type="button" role="tab">Excel Input</button>
+                                            </li>
+                                        </ul>
+                                        
+                                        <div class="tab-content mt-3">
+                                            <div class="tab-pane fade show active" id="text-input" role="tabpanel">
+                                                <div class="mb-3">
+                                                    <label for="tts-text" class="form-label">Text to Convert:</label>
+                                                    <textarea class="form-control" id="tts-text" rows="5" placeholder="Enter text here..."></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane fade" id="excel-input" role="tabpanel">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Excel File:</label>
+                                                    <div class="drop-zone" id="tts-excel-drop-zone">
+                                                        <p>Drag Excel file here or</p>
+                                                        <input type="file" id="tts-excel-input" accept=".xlsx,.xls">
+                                                        <label for="tts-excel-input" class="file-input-label">Browse Files</label>
+                                                    </div>
+                                                    <div id="tts-excel-preview" class="mt-3" style="display: none;">
+                                                        <h5>Preview:</h5>
+                                                        <div class="table-responsive">
+                                                            <table class="table table-sm">
+                                                                <tbody id="tts-excel-preview-content"></tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label for="tts-voice-search" class="form-label">Search Voice:</label>
+                                            <input type="text" class="form-control mb-2" id="tts-voice-search" placeholder="Type to search voices...">
+                                            <select class="form-select" id="tts-voice" size="5">
+                                                <option selected>Loading voices...</option>
+                                                <!-- Voices will be populated dynamically -->
+                                            </select>
+                                        </div>
+
+                                        <div class="d-grid gap-2 mt-4">
+                                            <button id="tts-convert-btn" class="btn btn-primary">Convert to Speech</button>
+                                        </div>
+
+                                        <div id="tts-progress" class="progress mt-3" style="display: none;">
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                        </div>
+
+                                        <div id="tts-result-container" class="mt-4" style="display: none;">
+                                            <h4>Conversion Results:</h4>
+                                            <div id="tts-results-list"></div>
+                                            <div class="d-grid gap-2 mt-3">
+                                                <button id="tts-download-all" class="btn btn-success">Download All MP3s</button>
+                                            </div>
+                                        </div>
+
+                                        <div id="tts-error-container" class="alert alert-danger mt-4" style="display: none;"></div>
                                     </div>
-                                    <div class="mb-3">
-                                        <label for="tts-voice" class="form-label">Select Voice:</label>
-                                        <select class="form-select" id="tts-voice">
-                                            <option selected>Loading voices...</option>
-                                            <!-- Voices will be populated dynamically -->
-                                        </select>
-                                    </div>
-                                    <div class="d-grid gap-2 mt-4">
-                                        <button id="tts-convert-btn" class="btn btn-primary">Convert to Speech</button>
-                                    </div>
-                                    <div id="tts-result-container" class="mt-4" style="display: none;">
-                                        <h4>Conversion Result:</h4>
-                                        <audio id="tts-audio-player" controls></audio>
-                                        <a id="tts-download-link" href="#" class="btn btn-success mt-2" download="tts_output.mp3" style="display: none;">Download MP3</a>
-                                    </div>
-                                    <div id="tts-error-container" class="alert alert-danger mt-4" style="display: none;"></div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
             </div>
         </div>
         

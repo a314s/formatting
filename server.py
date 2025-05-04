@@ -841,8 +841,11 @@ def run_http_server():
             httpd.server_close()
 
 if __name__ == "__main__":
+    # Add MIME types
     if not mimetypes.guess_type('file.js')[0]:
         mimetypes.add_type('application/javascript', '.js')
+    if not mimetypes.guess_type('file.css')[0]:
+        mimetypes.add_type('text/css', '.css')
     
     # Start WebSocket server in a separate thread
     ws_thread = threading.Thread(target=run_websocket_server)

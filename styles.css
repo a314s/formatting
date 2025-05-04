@@ -1,3 +1,12 @@
+:root {
+    --card-bg: #ffffff;
+    --border-radius: 8px;
+    --shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    --primary-rgb: 52, 152, 219;
+    --primary-color: #3498db;
+    --text-color: #2c3e50;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -162,6 +171,26 @@ main {
     text-align: center;
     margin-bottom: 20px;
     transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+#tts-excel-input {
+    display: none;
+}
+
+#tts-excel-drop-zone .file-input-label {
+    display: inline-block;
+    background-color: #3498db;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: background-color 0.3s ease;
+}
+
+#tts-excel-drop-zone .file-input-label:hover {
+    background-color: #2980b9;
 }
 
 .drop-zone.active {

@@ -982,111 +982,229 @@ document.addEventListener('DOMContentLoaded', function() {
 function setupTTSTab() {
     const ttsText = document.getElementById('tts-text');
     const ttsVoiceSelect = document.getElementById('tts-voice');
+    const ttsVoiceSearch = document.getElementById('tts-voice-search');
     const ttsConvertBtn = document.getElementById('tts-convert-btn');
     const ttsResultContainer = document.getElementById('tts-result-container');
-    const ttsAudioPlayer = document.getElementById('tts-audio-player');
-    const ttsDownloadLink = document.getElementById('tts-download-link');
+    const ttsResultsList = document.getElementById('tts-results-list');
+    const ttsDownloadAll = document.getElementById('tts-download-all');
     const ttsErrorContainer = document.getElementById('tts-error-container');
+    const ttsProgress = document.getElementById('tts-progress');
+    const ttsProgressBar = ttsProgress.querySelector('.progress-bar');
+    const ttsExcelDropZone = document.getElementById('tts-excel-drop-zone');
+    const ttsExcelInput = document.getElementById('tts-excel-input');
+    const ttsExcelPreview = document.getElementById('tts-excel-preview');
+    const ttsExcelPreviewContent = document.getElementById('tts-excel-preview-content');
+
+    let voices = [];
+    let currentMode = 'text'; // 'text' or 'excel'
+    let excelRows = [];
 
     // Load voices when the tab is set up
-    loadTTSVoices(ttsVoiceSelect);
+    loadTTSVoices();
 
-    ttsConvertBtn.addEventListener('click', function() {
-        const text = ttsText.value.trim();
+    // Setup Excel drop zone
+    setupDropZone(ttsExcelDropZone, ttsExcelInput, handleExcelFile);
+
+    // Voice search functionality
+    ttsVoiceSearch.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        filterVoices(searchTerm);
+    });
+
+    // Convert button click handler
+    ttsConvertBtn.addEventListener('click', async function() {
         const voice = ttsVoiceSelect.value;
-
-        if (!text) {
-            showTTSError('Please enter some text to convert.');
-            return;
-        }
         if (!voice || voice === 'loading') {
             showTTSError('Please select a voice.');
             return;
         }
 
-        convertTextToSpeech(text, voice, ttsResultContainer, ttsAudioPlayer, ttsDownloadLink, ttsErrorContainer, ttsConvertBtn);
+        if (currentMode === 'text') {
+            const text = ttsText.value.trim();
+            if (!text) {
+                showTTSError('Please enter some text to convert.');
+                return;
+            }
+            await convertSingleText(text, voice);
+        } else {
+            if (excelRows.length === 0) {
+                showTTSError('Please upload an Excel file first.');
+                return;
+            }
+            await convertExcelRows(voice);
+        }
     });
-}
 
-function loadTTSVoices(selectElement) {
-    selectElement.innerHTML = '<option value="loading">Loading voices...</option>';
-    selectElement.disabled = true;
+    // Download all button click handler
+    ttsDownloadAll.addEventListener('click', function() {
+        const audioElements = ttsResultsList.getElementsByTagName('audio');
+        Array.from(audioElements).forEach((audio, index) => {
+            const link = document.createElement('a');
+            link.href = audio.src;
+            link.download = `tts_output_${index + 1}.mp3`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    });
 
-    fetch('/api/tts-voices')
-        .then(response => {
+    async function loadTTSVoices() {
+        ttsVoiceSelect.innerHTML = '<option value="loading">Loading voices...</option>';
+        ttsVoiceSelect.disabled = true;
+
+        try {
+            const response = await fetch('/api/tts-voices');
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
             }
-            return response.json();
-        })
-        .then(voices => {
-            selectElement.innerHTML = '<option value="" disabled selected>Select a voice</option>'; // Add placeholder
-            if (voices && voices.length > 0) {
-                voices.forEach(voice => {
-                    const option = document.createElement('option');
-                    option.value = voice.id; // Assuming voice object has id and name
-                    option.textContent = voice.name;
-                    selectElement.appendChild(option);
-                });
-                selectElement.disabled = false;
-            } else {
-                 selectElement.innerHTML = '<option value="" disabled selected>No voices available</option>';
-                 showTTSError('No TTS voices found on the server.');
-            }
-        })
-        .catch(error => {
+            voices = await response.json();
+            updateVoicesList();
+            ttsVoiceSelect.disabled = false;
+        } catch (error) {
             console.error('Error loading TTS voices:', error);
-            selectElement.innerHTML = '<option value="" disabled selected>Error loading voices</option>';
+            ttsVoiceSelect.innerHTML = '<option value="" disabled selected>Error loading voices</option>';
             showTTSError(`Failed to load voices: ${error.message}`);
-        });
-}
-
-function convertTextToSpeech(text, voiceId, resultContainer, audioPlayer, downloadLink, errorContainer, convertBtn) {
-    errorContainer.style.display = 'none';
-    resultContainer.style.display = 'none';
-    convertBtn.disabled = true;
-    convertBtn.textContent = 'Converting...';
-
-    fetch('/api/tts', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: text, voice_id: voiceId })
-    })
-    .then(response => {
-        if (!response.ok) {
-             // Try to get error message from JSON response first
-             return response.json().then(errData => {
-                 throw new Error(errData.error || `Server error: ${response.status}`);
-             }).catch(() => {
-                 // Fallback if response is not JSON
-                 throw new Error(`Server error: ${response.status}`);
-             });
         }
-        return response.blob(); // Expecting audio blob
-    })
-    .then(audioBlob => {
-        const audioUrl = URL.createObjectURL(audioBlob);
-        audioPlayer.src = audioUrl;
-        downloadLink.href = audioUrl;
-        downloadLink.style.display = 'inline-block';
-        resultContainer.style.display = 'block';
-    })
-    .catch(error => {
-        console.error('Error converting text to speech:', error);
-        showTTSError(`Conversion failed: ${error.message}`);
-    })
-    .finally(() => {
-        convertBtn.disabled = false;
-        convertBtn.textContent = 'Convert to Speech';
-    });
-}
+    }
 
-function showTTSError(message) {
-    const errorContainer = document.getElementById('tts-error-container');
-    errorContainer.textContent = message;
-    errorContainer.style.display = 'block';
-    // Hide result container if error occurs
-    document.getElementById('tts-result-container').style.display = 'none';
+    function updateVoicesList(filteredVoices = null) {
+        const voicesToShow = filteredVoices || voices;
+        ttsVoiceSelect.innerHTML = '<option value="" disabled selected>Select a voice</option>';
+        voicesToShow.forEach(voice => {
+            const option = document.createElement('option');
+            option.value = voice.id;
+            option.textContent = voice.name;
+            ttsVoiceSelect.appendChild(option);
+        });
+    }
+
+    function filterVoices(searchTerm) {
+        const filtered = voices.filter(voice =>
+            voice.name.toLowerCase().includes(searchTerm)
+        );
+        updateVoicesList(filtered);
+    }
+
+    async function handleExcelFile(file) {
+        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+            showTTSError('Please upload a valid Excel file (.xlsx or .xls)');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                excelRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
+                    .filter(row => row.length > 0 && row[0]); // Filter out empty rows
+
+                // Show preview
+                ttsExcelPreview.style.display = 'block';
+                ttsExcelPreviewContent.innerHTML = excelRows
+                    .slice(0, 5) // Show first 5 rows
+                    .map(row => `<tr><td>${row[0]}</td></tr>`)
+                    .join('') +
+                    (excelRows.length > 5 ? '<tr><td>...</td></tr>' : '');
+
+                currentMode = 'excel';
+            } catch (error) {
+                showTTSError('Error reading Excel file: ' + error.message);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    async function convertSingleText(text, voice) {
+        ttsProgress.style.display = 'block';
+        ttsProgressBar.style.width = '50%';
+        ttsConvertBtn.disabled = true;
+        ttsErrorContainer.style.display = 'none';
+        ttsResultContainer.style.display = 'none';
+
+        try {
+            const audioBlob = await convertTextToSpeech(text, voice);
+            displayAudioResult([{ text, blob: audioBlob }]);
+        } catch (error) {
+            showTTSError(`Conversion failed: ${error.message}`);
+        } finally {
+            ttsConvertBtn.disabled = false;
+            ttsProgress.style.display = 'none';
+        }
+    }
+
+    async function convertExcelRows(voice) {
+        ttsProgress.style.display = 'block';
+        ttsConvertBtn.disabled = true;
+        ttsErrorContainer.style.display = 'none';
+        ttsResultContainer.style.display = 'none';
+
+        const results = [];
+        let completed = 0;
+
+        try {
+            for (const row of excelRows) {
+                const text = row[0].toString().trim();
+                if (text) {
+                    const audioBlob = await convertTextToSpeech(text, voice);
+                    results.push({ text, blob: audioBlob });
+                    completed++;
+                    ttsProgressBar.style.width = `${(completed / excelRows.length) * 100}%`;
+                }
+            }
+            displayAudioResult(results);
+        } catch (error) {
+            showTTSError(`Conversion failed: ${error.message}`);
+        } finally {
+            ttsConvertBtn.disabled = false;
+            ttsProgress.style.display = 'none';
+        }
+    }
+
+    async function convertTextToSpeech(text, voiceId) {
+        const response = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice_id: voiceId })
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ error: `Server error: ${response.status}` }));
+            throw new Error(error.error || `Server error: ${response.status}`);
+        }
+
+        return response.blob();
+    }
+
+    function displayAudioResult(results) {
+        ttsResultsList.innerHTML = '';
+        
+        results.forEach((result, index) => {
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'card mb-3';
+            
+            const audioUrl = URL.createObjectURL(result.blob);
+            resultDiv.innerHTML = `
+                <div class="card-body">
+                    <p class="card-text">${result.text}</p>
+                    <audio controls src="${audioUrl}" class="w-100"></audio>
+                    <a href="${audioUrl}" class="btn btn-sm btn-success mt-2" download="tts_output_${index + 1}.mp3">
+                        Download MP3
+                    </a>
+                </div>
+            `;
+            
+            ttsResultsList.appendChild(resultDiv);
+        });
+
+        ttsResultContainer.style.display = 'block';
+        ttsDownloadAll.style.display = results.length > 1 ? 'block' : 'none';
+    }
+
+    function showTTSError(message) {
+        ttsErrorContainer.textContent = message;
+        ttsErrorContainer.style.display = 'block';
+        ttsResultContainer.style.display = 'none';
+    }
 }
