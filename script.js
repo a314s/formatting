@@ -290,7 +290,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize Word to PDF converter
     setupWordConverter();
 
-// Initialize TTS Converter
+    // Initialize Checklist functionality
+    setupChecklistTab();
+
+    // Initialize TTS Converter
     setupTTSTab();
     // Setup shutdown button
     const shutdownButton = document.getElementById('shutdown-button');
@@ -1206,5 +1209,204 @@ function setupTTSTab() {
         ttsErrorContainer.textContent = message;
         ttsErrorContainer.style.display = 'block';
         ttsResultContainer.style.display = 'none';
+    }
+}
+
+// Checklist Tab Code
+function setupChecklistTab() {
+    console.log('Setting up checklist tab...'); // Debug log
+    
+    const checklistDropZone = document.getElementById('checklist-drop-zone');
+    const checklistInput = document.getElementById('checklist-input');
+    const checklistFileInfo = document.getElementById('checklist-file-info');
+    const processBtn = document.getElementById('process-checklist-btn');
+    const progressBar = document.getElementById('checklist-progress');
+    const progressBarInner = progressBar.querySelector('.progress-bar');
+    const resultContainer = document.getElementById('checklist-result-container');
+    const resultMessage = document.getElementById('checklist-result-message');
+    const downloadLink = document.getElementById('checklist-download-link');
+    const errorContainer = document.getElementById('checklist-error-container');
+
+    // Debug log for elements
+    console.log('Elements found:', {
+        dropZone: checklistDropZone,
+        input: checklistInput,
+        fileInfo: checklistFileInfo,
+        processBtn: processBtn
+    });
+
+    let docxFile = null;
+
+    // Setup drag and drop events
+    checklistDropZone.addEventListener('dragenter', handleDragEvent);
+    checklistDropZone.addEventListener('dragover', handleDragEvent);
+    checklistDropZone.addEventListener('dragleave', handleDragLeave);
+    checklistDropZone.addEventListener('drop', handleDrop);
+
+    // Setup button click handler
+    const browseButton = checklistDropZone.querySelector('button');
+    if (browseButton) {
+        browseButton.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent event from bubbling to drop zone
+            checklistInput.click();
+        });
+    }
+
+    // Setup drop zone click handler (excluding button)
+    checklistDropZone.addEventListener('click', (e) => {
+        // Only trigger file input if the click wasn't on the button
+        if (e.target === checklistDropZone || e.target.classList.contains('drop-zone__content') || e.target.tagName === 'P') {
+            checklistInput.click();
+        }
+    });
+
+    function handleDragEvent(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        checklistDropZone.classList.add('dragover');
+        console.log('Drag event:', e.type); // Debug log
+    }
+
+    function handleDragLeave(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        checklistDropZone.classList.remove('dragover');
+        console.log('Drag leave'); // Debug log
+    }
+
+    function handleDrop(e) {
+        console.log('Drop event triggered'); // Debug log
+        e.preventDefault();
+        e.stopPropagation();
+        checklistDropZone.classList.remove('dragover');
+
+        const dt = e.dataTransfer;
+        const files = dt.files;
+
+        if (files.length > 0) {
+            console.log('File dropped:', files[0].name); // Debug log
+            handleChecklistFile(files[0]);
+        }
+    }
+
+    // Handle file input change
+    checklistInput.addEventListener('change', function(e) {
+        console.log('File input change event'); // Debug log
+        if (this.files.length > 0) {
+            console.log('File selected:', this.files[0].name); // Debug log
+            handleChecklistFile(this.files[0]);
+        }
+    });
+
+    // Process button click handler
+    processBtn.addEventListener('click', function() {
+        if (!docxFile) {
+            showChecklistError('Please select a Word document first.');
+            return;
+        }
+        processChecklistFile();
+    });
+
+    function handleChecklistFile(file) {
+        console.log('Handling file:', file); // Debug log
+        if (!file.name.endsWith('.docx')) {
+            showChecklistError('Please select a valid Word document (.docx)');
+            return;
+        }
+
+        docxFile = file;
+        
+        // Update file info display
+        checklistFileInfo.innerHTML = `
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-file-word"></i>
+                <span class="ms-2">${file.name} (${formatFileSize(file.size)})</span>
+            </div>
+        `;
+        checklistFileInfo.style.display = 'block';
+        
+        // Update drop zone content
+        const dropZoneContent = checklistDropZone.querySelector('.drop-zone__content');
+        if (dropZoneContent) {
+            dropZoneContent.innerHTML = `
+                <p>File ready for processing</p>
+                <button type="button" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-exchange-alt"></i> Choose Different File
+                </button>
+            `;
+        }
+        
+        processBtn.disabled = false;
+        errorContainer.style.display = 'none';
+        console.log('File processed successfully'); // Debug log
+    }
+
+    function processChecklistFile() {
+        console.log('Processing file:', docxFile); // Debug log
+        
+        const formData = new FormData();
+        formData.append('file', docxFile, docxFile.name);  // Include filename
+
+        progressBar.style.display = 'flex';
+        progressBarInner.style.width = '50%';
+        resultContainer.style.display = 'none';
+        errorContainer.style.display = 'none';
+        processBtn.disabled = true;
+
+        fetch('/api/process-checklist', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            console.log('Server response:', response.status); // Debug log
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.error('Server error:', text); // Debug log
+                    throw new Error(text);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Server response data:', data); // Debug log
+            progressBarInner.style.width = '100%';
+            setTimeout(() => {
+                progressBar.style.display = 'none';
+            }, 1000);
+
+            resultMessage.textContent = 'Your checklist has been generated successfully!';
+            downloadLink.href = `/download/${data.id}/${data.filename}`;
+            resultContainer.style.display = 'block';
+        })
+        .catch(error => {
+            showChecklistError(error.message);
+        })
+        .finally(() => {
+            processBtn.disabled = false;
+        });
+    }
+
+    function showChecklistError(message) {
+        errorContainer.innerHTML = `
+            <div class="alert alert-danger mb-0">
+                <i class="fas fa-exclamation-circle"></i>
+                <span class="ms-2">${message}</span>
+            </div>
+        `;
+        errorContainer.style.display = 'block';
+        progressBar.style.display = 'none';
+        resultContainer.style.display = 'none';
+        
+        // Reset file info display
+        checklistFileInfo.style.display = 'none';
+        
+        // Reset drop zone content
+        const dropZoneContent = checklistDropZone.querySelector('.drop-zone__content');
+        if (dropZoneContent) {
+            dropZoneContent.innerHTML = `
+                <p>Drag a .docx file here or</p>
+                <button type="button" class="btn btn-primary">Browse Files</button>
+            `;
+        }
     }
 }

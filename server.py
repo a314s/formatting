@@ -4,6 +4,12 @@ import os
 import json
 import sys
 import tempfile
+from docx import Document
+import openai
+from config import OPENAI_API_KEY
+
+# Configure OpenAI
+openai.api_key = OPENAI_API_KEY
 import shutil
 from urllib.parse import parse_qs, urlparse
 import mimetypes
@@ -108,72 +114,92 @@ class MultipartFormParser:
         self.content_type = content_type
         self.content_length = content_length
         self.rfile = rfile
+        print(f"MultipartFormParser initialized with content length: {content_length}")  # Debug log
         
     def parse(self):
-        boundary = self.content_type.split('boundary=')[1].encode()
-        remainbytes = self.content_length
-        
-        # Read until first boundary
-        while True:
-            line = self.rfile.readline()
-            remainbytes -= len(line)
-            if boundary in line:
-                break
-        
+        print("Starting form parse")  # Debug log
         fields = {}
-        while remainbytes > 0:
-            # Parse headers
-            headers = {}
+
+        try:
+            # Get boundary from content type
+            boundary = self.content_type.split('boundary=')[1].encode()
+            print(f"Found boundary: {boundary}")  # Debug log
+            remainbytes = self.content_length
+            
+            # Read until first boundary
             while True:
                 line = self.rfile.readline()
                 remainbytes -= len(line)
-                if line == b'\r\n':
-                    break
-                    
-                # Parse header line
-                line = line.decode('utf-8').strip()
-                if ':' in line:
-                    key, value = line.split(':', 1)
-                    headers[key.strip().lower()] = value.strip()
-            
-            # Get field name and filename from Content-Disposition
-            filename = None
-            name = None
-            if 'content-disposition' in headers:
-                disposition = headers['content-disposition']
-                items = disposition.split(';')
-                for item in items:
-                    item = item.strip()
-                    if item.startswith('name='):
-                        name = item.split('=')[1].strip('"')
-                    elif item.startswith('filename='):
-                         filename = item.split('=')[1].strip('"')
-                if not name: # If name wasn't found, skip this part
-                    continue
-            else:
-                continue
-            
-            # Read content until boundary
-            content = io.BytesIO()
-            while remainbytes > 0:
-                line = self.rfile.readline()
-                remainbytes -= len(line)
                 if boundary in line:
+                    print("Found first boundary")  # Debug log
                     break
-                content.write(line)
-            
-            # Store field value and filename
-            value = content.getvalue().strip(b'\r\n')
-            if filename:
-                 # Store as a tuple: (filename, content)
-                 fields[name.encode()] = (filename.encode(), value)
-            else:
-                 # Store just the value
-                 fields[name.encode()] = value
 
-            if remainbytes <= 0:
-                break
+            # Process form fields
+            while remainbytes > 0:
+                try:
+            # Parse headers
+                    # Parse headers
+                    headers = {}
+                    while True:
+                        line = self.rfile.readline()
+                        remainbytes -= len(line)
+                        if line == b'\r\n':
+                            break
+                        
+                        # Parse header line
+                        line = line.decode('utf-8').strip()
+                        if ':' in line:
+                            key, value = line.split(':', 1)
+                            headers[key.strip().lower()] = value.strip()
+                    
+                    # Get field name and filename from Content-Disposition
+                    filename = None
+                    name = None
+                    if 'content-disposition' in headers:
+                        disposition = headers['content-disposition']
+                        items = disposition.split(';')
+                        for item in items:
+                            item = item.strip()
+                            if item.startswith('name='):
+                                name = item.split('=')[1].strip('"')
+                            elif item.startswith('filename='):
+                                filename = item.split('=')[1].strip('"')
+                        if not name:  # If name wasn't found, skip this part
+                            continue
+                    else:
+                        continue
+                    
+                    # Read content until boundary
+                    content = io.BytesIO()
+                    while remainbytes > 0:
+                        line = self.rfile.readline()
+                        remainbytes -= len(line)
+                        if boundary in line:
+                            break
+                        content.write(line)
+                    
+                    # Store field value and filename
+                    value = content.getvalue().strip(b'\r\n')
+                    if filename:
+                        print(f"Found file: {filename}, content length: {len(value)}")  # Debug log
+                        # Store as a tuple: (filename, content)
+                        fields[name.encode()] = (filename.encode(), value)
+                    else:
+                        print(f"Found field: {name}")  # Debug log
+                        # Store just the value
+                        fields[name.encode()] = value
+
+                    if remainbytes <= 0:
+                        break
+
+                except Exception as e:
+                    print(f"Error processing field: {str(e)}")  # Debug log
+                    continue
+        except Exception as e:
+            print(f"Error in main form processing loop: {str(e)}")  # Debug log
+            return fields
         
+        print(f"Form parsing complete. Found fields: {list(fields.keys())}")  # Debug log
         return fields
 
 class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
@@ -277,12 +303,178 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_start_excel_session()
         elif self.path == '/api/convert-word':
             self.handle_word_conversion()
+        elif self.path == '/api/process-checklist':
+            if not OPENAI_API_KEY or OPENAI_API_KEY == 'your-api-key-here':
+                self.send_error(500, "OpenAI API key not configured. Please set OPENAI_API_KEY in config.py")
+                return
+            try:
+                self.handle_checklist_processing()
+            except Exception as e:
+                print(f"Error in checklist processing: {str(e)}")  # Debug log
+                self.send_error(500, str(e))
         elif self.path == '/api/tts':
             self.handle_tts_conversion()
-        else:
-            self.send_response(404)
+
+    def handle_checklist_processing(self):
+        """Handles POST request for processing Word documents into checklists."""
+        print("Starting checklist processing...")  # Debug log
+        try:
+            print(f"Headers: {self.headers}")  # Debug log
+            content_length = int(self.headers['Content-Length'])
+            content_type = self.headers['Content-Type']
+            
+            if not content_type.startswith('multipart/form-data'):
+                raise ValueError("Expected multipart/form-data")
+            
+            parser = MultipartFormParser(content_type, content_length, self.rfile)
+            form = parser.parse()
+            print(f"Form fields: {list(form.keys())}")  # Debug log
+            
+            if not form or b'file' not in form:
+                print("No file found in form data")  # Debug log
+                raise ValueError("No file uploaded")
+
+            # Extract filename and content
+            filename_bytes, file_content = form[b'file']
+            print(f"File content length: {len(file_content)}")  # Debug log
+            original_filename = filename_bytes.decode('utf-8', errors='ignore')
+            print(f"Original filename: {original_filename}")  # Debug log
+            original_filename_safe = secure_filename(original_filename)
+            base_name, _ = os.path.splitext(original_filename_safe)
+            
+            # Create a unique ID for this conversion
+            conversion_id = os.urandom(16).hex()
+            conversion_dir = os.path.join(UPLOAD_DIR, conversion_id)
+            os.makedirs(conversion_dir, exist_ok=True)
+
+            # Save the uploaded file
+            input_path = os.path.join(conversion_dir, original_filename_safe)
+            with open(input_path, 'wb') as f:
+                f.write(file_content)
+
+            # Read the Word document
+            doc = Document(input_path)
+            text_content = []
+            found_first_step = False
+            
+            # Extract text content after finding the first step
+            # First, collect all paragraphs
+            all_paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+            
+            # Try to find where the steps begin
+            for i, text in enumerate(all_paragraphs):
+                # Look for common step indicators
+                if (text.lower().startswith(('step', 'procedure', 'assembly')) or
+                    (any(char.isdigit() for char in text[:5]) and len(text) > 10) or  # Number in first 5 chars
+                    text.lower().startswith(('1.', '1)', '1 -', '[1]', '(1)'))):  # Common numbering formats
+                    found_first_step = True
+                    text_content = all_paragraphs[i:]  # Include this and all following paragraphs
+                    break
+            
+            # If no clear step indicator found, include all non-empty paragraphs
+            if not found_first_step and all_paragraphs:
+                text_content = all_paragraphs
+
+            # Prepare prompt for OpenAI
+            prompt = """Analyze the following assembly or procedure text and create a structured checklist.
+            Format the output as a table with two columns:
+            Column 1: Step/Sub-step number (e.g., 1, 1.1, 1.2, 2, etc.)
+            Column 2: Description
+
+            Guidelines:
+            - Break down complex steps into sub-steps for clarity
+            - Preserve important technical details
+            - Use clear, concise language
+            - Maintain the original sequence of operations
+            - Include any critical warnings or notes as sub-steps
+
+            Text to process:
+            """ + "\n".join(text_content)
+
+            # Call OpenAI API
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that extracts and organizes steps from text into a structured table format."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            # Create new Word document
+            output_doc = Document()
+            output_doc.add_heading('Assembly Checklist', 0)
+            
+            # Add introduction
+            output_doc.add_paragraph(f"Checklist generated from: {original_filename}")
+            output_doc.add_paragraph("Follow each step carefully and check off items as they are completed.")
+            
+            # Parse the OpenAI response and create a table
+            table_content = response.choices[0].message.content
+            
+            # Split the content into lines and filter out empty lines
+            lines = [line.strip() for line in table_content.split('\n') if line.strip()]
+            
+            # Create table with appropriate number of rows
+            table = output_doc.add_table(rows=len(lines), cols=3)
+            table.style = 'Table Grid'
+            
+            # Set column widths (in inches)
+            for row in table.rows:
+                row.cells[0].width = 1.0  # Checkbox column
+                row.cells[1].width = 1.5  # Step number column
+                row.cells[2].width = 4.5  # Description column
+            
+            # Add headers
+            header_cells = table.rows[0].cells
+            header_cells[0].text = "✓"
+            header_cells[1].text = "Step"
+            header_cells[2].text = "Description"
+            
+            # Add content
+            for i, line in enumerate(lines[1:], start=1):  # Skip header row
+                # Split line into step number and description
+                parts = line.split('|') if '|' in line else line.split('\t')
+                if len(parts) >= 2:
+                    step_num = parts[0].strip()
+                    desc = parts[1].strip()
+                else:
+                    # Handle cases where the split didn't work
+                    step_num = ""
+                    desc = line.strip()
+                
+                # Add to table
+                row_cells = table.rows[i].cells
+                row_cells[0].text = "☐"  # Checkbox
+                row_cells[1].text = step_num
+                row_cells[2].text = desc
+                
+                # Indent sub-steps
+                if '.' in step_num:  # This is a sub-step
+                    row_cells[1].paragraphs[0].paragraph_format.left_indent = 10
+                    row_cells[2].paragraphs[0].paragraph_format.left_indent = 10
+            
+            # Add footer
+            output_doc.add_paragraph("\nNotes:")
+            output_doc.add_paragraph("_" * 50)
+            output_doc.add_paragraph("_" * 50)
+
+            # Save the output document
+            output_filename = f"{base_name}_checklist.docx"
+            output_path = os.path.join(conversion_dir, output_filename)
+            output_doc.save(output_path)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(b'Not Found')
+            self.wfile.write(json.dumps({
+                'id': conversion_id,
+                'filename': output_filename,
+                'success': True
+            }).encode())
+
+        except Exception as e:
+            print(f"Error in checklist processing: {str(e)}")  # Debug log
+            self.send_error(500, str(e))
 
     def handle_word_conversion(self):
         try:
