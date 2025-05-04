@@ -295,6 +295,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize TTS Converter
     setupTTSTab();
+
     // Setup shutdown button
     const shutdownButton = document.getElementById('shutdown-button');
     if (shutdownButton) {
@@ -319,7 +320,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Setup tab switching
+    // Setup tab navigation
     const tabButtons = document.querySelectorAll('.tab-button');
     const tabPanes = document.querySelectorAll('.tab-pane');
 
@@ -1208,8 +1209,99 @@ function setupTTSTab() {
     function showTTSError(message) {
         ttsErrorContainer.textContent = message;
         ttsErrorContainer.style.display = 'block';
-        ttsResultContainer.style.display = 'none';
     }
+}
+
+async function convertSingleText(text, voice) {
+    ttsProgress.style.display = 'block';
+    ttsProgressBar.style.width = '50%';
+    ttsConvertBtn.disabled = true;
+    ttsErrorContainer.style.display = 'none';
+    ttsResultContainer.style.display = 'none';
+
+    try {
+        const audioBlob = await convertTextToSpeech(text, voice);
+        displayAudioResult([{ text, blob: audioBlob }]);
+    } catch (error) {
+        showTTSError(`Conversion failed: ${error.message}`);
+    } finally {
+        ttsConvertBtn.disabled = false;
+        ttsProgress.style.display = 'none';
+    }
+}
+
+async function convertExcelRows(voice) {
+    ttsProgress.style.display = 'block';
+    ttsConvertBtn.disabled = true;
+    ttsErrorContainer.style.display = 'none';
+    ttsResultContainer.style.display = 'none';
+
+    const results = [];
+    let completed = 0;
+
+    try {
+        for (const row of excelRows) {
+            const text = row[0].toString().trim();
+            if (text) {
+                const audioBlob = await convertTextToSpeech(text, voice);
+                results.push({ text, blob: audioBlob });
+                completed++;
+                ttsProgressBar.style.width = `${(completed / excelRows.length) * 100}%`;
+            }
+        }
+        displayAudioResult(results);
+    } catch (error) {
+        showTTSError(`Conversion failed: ${error.message}`);
+    } finally {
+        ttsConvertBtn.disabled = false;
+        ttsProgress.style.display = 'none';
+    }
+}
+
+async function convertTextToSpeech(text, voiceId) {
+    const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice_id: voiceId })
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: `Server error: ${response.status}` }));
+        throw new Error(error.error || `Server error: ${response.status}`);
+    }
+
+    return response.blob();
+}
+
+function displayAudioResult(results) {
+    ttsResultsList.innerHTML = '';
+    
+    results.forEach((result, index) => {
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'card mb-3';
+        
+        const audioUrl = URL.createObjectURL(result.blob);
+        resultDiv.innerHTML = `
+            <div class="card-body">
+                <p class="card-text">${result.text}</p>
+                <audio controls src="${audioUrl}" class="w-100"></audio>
+                <a href="${audioUrl}" class="btn btn-sm btn-success mt-2" download="tts_output_${index + 1}.mp3">
+                    Download MP3
+                </a>
+            </div>
+        `;
+        
+        ttsResultsList.appendChild(resultDiv);
+    });
+
+    ttsResultContainer.style.display = 'block';
+    ttsDownloadAll.style.display = results.length > 1 ? 'block' : 'none';
+}
+
+function showTTSError(message) {
+    ttsErrorContainer.textContent = message;
+    ttsErrorContainer.style.display = 'block';
+    ttsResultContainer.style.display = 'none';
 }
 
 // Checklist Tab Code
@@ -1221,6 +1313,17 @@ function setupChecklistTab() {
     const checklistFileInfo = document.getElementById('checklist-file-info');
     const processBtn = document.getElementById('process-checklist-btn');
     const progressBar = document.getElementById('checklist-progress');
+    
+    // Helper function to format file size
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
     const progressBarInner = progressBar.querySelector('.progress-bar');
     const resultContainer = document.getElementById('checklist-result-container');
     const resultMessage = document.getElementById('checklist-result-message');

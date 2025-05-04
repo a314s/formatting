@@ -5,11 +5,12 @@ import json
 import sys
 import tempfile
 from docx import Document
-import openai
+from docx.shared import RGBColor
+from openai import OpenAI
 from config import OPENAI_API_KEY
 
-# Configure OpenAI
-openai.api_key = OPENAI_API_KEY
+# Initialize OpenAI client (v1+)
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 import shutil
 from urllib.parse import parse_qs, urlparse
 import mimetypes
@@ -336,7 +337,6 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
 
             # Extract filename and content
             filename_bytes, file_content = form[b'file']
-            print(f"File content length: {len(file_content)}")  # Debug log
             original_filename = filename_bytes.decode('utf-8', errors='ignore')
             print(f"Original filename: {original_filename}")  # Debug log
             original_filename_safe = secure_filename(original_filename)
@@ -376,24 +376,32 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
                 text_content = all_paragraphs
 
             # Prepare prompt for OpenAI
-            prompt = """Analyze the following assembly or procedure text and create a structured checklist.
-            Format the output as a table with two columns:
-            Column 1: Step/Sub-step number (e.g., 1, 1.1, 1.2, 2, etc.)
-            Column 2: Description
-
+            prompt = """Analyze the following assembly or procedure text and create a structured checklist starting from step 6 onwards.
+            Format the output as a table with one column:
+            Column 1: Step/Sub-step number followed by a short summary of the step (e.g., "6. Install mounting brackets")
+            
             Guidelines:
-            - Break down complex steps into sub-steps for clarity
-            - Preserve important technical details
+            - ONLY include steps and substeps from step 6 onwards
+            - IMPORTANT: Break down ALL steps (not just 6.1) into detailed sub-steps
+            - For EVERY main step (6, 7, 8, etc.), provide detailed substeps (6.1, 6.2, 7.1, 7.2, etc.)
+            - For complex substeps, provide further breakdown (6.1.1, 6.1.2, 6.2.1, etc.)
+            - Create concise summaries that capture the essence of each step
+            - IMPORTANT: Include part numbers in the summaries wherever they are mentioned
+            - Preserve all technical details and specifications in the summary
             - Use clear, concise language
             - Maintain the original sequence of operations
             - Include any critical warnings or notes as sub-steps
+            - Ensure each step and substep is on its own separate line
+            - Use clear numbering (6., 6.1., 6.1.1, 6.2., 7., 7.1., etc.) for all steps and substeps
+            - Do not include any table formatting characters like |, just the step number and summary
+            - Make sure to break down EVERY step, not just step 6.1
 
             Text to process:
             """ + "\n".join(text_content)
 
             # Call OpenAI API
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
+            response = openai_client.chat.completions.create(
+                model="gpt-4.1",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that extracts and organizes steps from text into a structured table format."},
                     {"role": "user", "content": prompt}
@@ -402,11 +410,33 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
 
             # Create new Word document
             output_doc = Document()
-            output_doc.add_heading('Assembly Checklist', 0)
             
-            # Add introduction
-            output_doc.add_paragraph(f"Checklist generated from: {original_filename}")
-            output_doc.add_paragraph("Follow each step carefully and check off items as they are completed.")
+            # Set document properties for standard page formatting with integer values
+            section = output_doc.sections[0]
+            # Standard letter size (using integer values)
+            section.page_width = int(8.5 * 1440)  # 8.5 inches in twips (1440 twips per inch)
+            section.page_height = int(11 * 1440)  # 11 inches in twips
+            # Normal margins (using integer values)
+            section.left_margin = section.right_margin = int(1 * 1440)  # 1 inch margins
+            
+            # Add title with proper formatting
+            title = output_doc.add_heading('Assembly Checklist - Steps 6 and Beyond', 0)
+            title.alignment = 1  # Center alignment
+            
+            # Add introduction with proper formatting
+            intro1 = output_doc.add_paragraph()
+            intro1.add_run(f"Checklist generated from: {original_filename}").bold = True
+            intro1.alignment = 0  # Left alignment
+            
+            intro2 = output_doc.add_paragraph("This checklist contains steps 6 and beyond from the assembly procedure. Follow each step carefully and complete the values and pass/fail columns as appropriate.")
+            intro2.alignment = 0  # Left alignment
+            
+            intro3 = output_doc.add_paragraph()
+            intro3.add_run("Note: Part numbers are included in step descriptions where applicable.").italic = True
+            intro3.alignment = 0  # Left alignment
+            
+            # Add spacing before table
+            output_doc.add_paragraph()
             
             # Parse the OpenAI response and create a table
             table_content = response.choices[0].message.content
@@ -418,45 +448,107 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             table = output_doc.add_table(rows=len(lines), cols=3)
             table.style = 'Table Grid'
             
-            # Set column widths (in inches)
-            for row in table.rows:
-                row.cells[0].width = 1.0  # Checkbox column
-                row.cells[1].width = 1.5  # Step number column
-                row.cells[2].width = 4.5  # Description column
+            # Set table width to 100% of available width between margins
+            table.autofit = False
+            table.allow_autofit = False
             
-            # Add headers
+            # Set preferred widths for columns using integer values
+            table.columns[0].width = int(4.9 * 1440)  # Step number and summary column (75% of available width)
+            table.columns[1].width = int(1.0 * 1440)  # Values column (15% of available width)
+            table.columns[2].width = int(0.6 * 1440)  # Pass/Fail column (10% of available width)
+            
+            # Add headers with proper formatting
             header_cells = table.rows[0].cells
-            header_cells[0].text = "✓"
-            header_cells[1].text = "Step"
-            header_cells[2].text = "Description"
+            header_cells[0].text = "Step and Description"
+            header_cells[1].text = "Values"
+            header_cells[2].text = "Pass/Fail"
+            
+            # Format header row
+            for cell in header_cells:
+                # Bold headers
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.bold = True
+                # Center align headers
+                cell.paragraphs[0].alignment = 1  # Center alignment
+                # Note: Cell shading removed as python-docx doesn't support cell.fill directly
             
             # Add content
             for i, line in enumerate(lines[1:], start=1):  # Skip header row
-                # Split line into step number and description
-                parts = line.split('|') if '|' in line else line.split('\t')
-                if len(parts) >= 2:
-                    step_num = parts[0].strip()
-                    desc = parts[1].strip()
-                else:
-                    # Handle cases where the split didn't work
-                    step_num = ""
-                    desc = line.strip()
+                # The line should already contain step number and summary
+                step_summary = line.strip()
                 
                 # Add to table
                 row_cells = table.rows[i].cells
-                row_cells[0].text = "☐"  # Checkbox
-                row_cells[1].text = step_num
-                row_cells[2].text = desc
+                row_cells[0].text = step_summary  # Step number and summary
+                row_cells[1].text = ""  # Values column (blank)
+                row_cells[2].text = ""  # Pass/Fail column
                 
-                # Indent sub-steps
-                if '.' in step_num:  # This is a sub-step
-                    row_cells[1].paragraphs[0].paragraph_format.left_indent = 10
-                    row_cells[2].paragraphs[0].paragraph_format.left_indent = 10
+                # Format cells properly
+                for cell in row_cells:
+                    # Set vertical alignment to center for all cells
+                    cell.vertical_alignment = 1  # 1 = CENTER
+                    
+                    # Ensure proper paragraph formatting
+                    for paragraph in cell.paragraphs:
+                        # Add minimal spacing for better readability (using integer values)
+                        paragraph.paragraph_format.space_before = 24  # 1/60 of an inch (integer)
+                        paragraph.paragraph_format.space_after = 24   # 1/60 of an inch (integer)
+                        # Line spacing - use line_spacing_rule instead of line_spacing to avoid float issues
+                        paragraph.paragraph_format.line_spacing_rule = 1  # Single spacing (1=single, 2=double)
+                
+                # Process step numbers for better alignment
+                if '.' in step_summary[:10]:  # Extended search range to catch multi-level substeps
+                    # Find the position of the first period
+                    dot_pos = step_summary.find('.')
+                    # Check if there's content after the period
+                    if dot_pos > 0 and dot_pos < len(step_summary) - 1:
+                        # Extract everything before the first period as the main step number
+                        main_step = step_summary[:dot_pos].strip()
+                        
+                        # Find the position of the first space after the step number
+                        # This helps separate the step number from the summary text
+                        space_pos = step_summary.find(' ', dot_pos)
+                        if space_pos > 0:
+                            # Extract the full step number (including all substep levels)
+                            full_step_num = step_summary[:space_pos].strip()
+                            # Extract the summary text
+                            summary = step_summary[space_pos:].strip()
+                            
+                            # Check if this is a main step or sub-step
+                            try:
+                                # Try to convert main_step to int to check if it's a main step
+                                int(main_step)
+                                is_main_step = len(main_step) == 1  # Main steps are single digits (1, 2, etc.)
+                            except ValueError:
+                                # If conversion fails, it's not a standard step number
+                                is_main_step = False
+                            
+                            # Format based on step level
+                            if is_main_step:
+                                # Format main steps
+                                row_cells[0].paragraphs[0].alignment = 0  # Left align
+                                p = row_cells[0].paragraphs[0].clear()
+                                p.add_run(f"{full_step_num} ").bold = True
+                                p.add_run(summary)
+                            else:
+                                # Format sub-steps with indentation
+                                row_cells[0].paragraphs[0].alignment = 0  # Left align
+                                row_cells[0].paragraphs[0].paragraph_format.left_indent = int(0.25 * 1440)  # 0.25 inches (as integer)
+                                p = row_cells[0].paragraphs[0].clear()
+                                p.add_run(f"{full_step_num} ").bold = True
+                                p.add_run(summary)
             
-            # Add footer
-            output_doc.add_paragraph("\nNotes:")
-            output_doc.add_paragraph("_" * 50)
-            output_doc.add_paragraph("_" * 50)
+            # Add footer with proper formatting
+            output_doc.add_paragraph()  # Add spacing
+            notes_heading = output_doc.add_paragraph()
+            notes_heading.add_run("Notes:").bold = True
+            
+            # Add lines for notes
+            for _ in range(3):
+                line = output_doc.add_paragraph()
+                line.add_run("_" * 80)
+                line.paragraph_format.space_after = int(1/6 * 1440)  # Add space between lines (1/6 inch as integer)
 
             # Save the output document
             output_filename = f"{base_name}_checklist.docx"
