@@ -4,27 +4,19 @@ import tkinter as tk
 from tkinter import filedialog
 import os
 
-def clean_text(original_text: str) -> str:
+def clean_text(original_text: str, options: dict) -> str:
     """
-    1. Remove all '...' (three consecutive periods).
-    2. In any text enclosed in double or single quotes:
-       - If the quoted text is exactly 'BOM' (case-insensitive), remove the quotes completely, replaced by BOM.
-       - Else, if the quoted text consists only of single letters/digits separated by spaces,
-         remove those spaces (e.g., "P R 3" -> "PR3").
-       - Otherwise, leave the quoted text as is.
-    3. Convert multiple spaces to single spaces.
-    4. Capitalize the first letter.
-    5. Ensure the text ends with a period.
+    Cleans text based on provided options dictionary.
+    Keys in options dict correspond to checkboxes, e.g., options['remove_ellipsis'].
     """
-
     # 1. Strip leading/trailing whitespace
     text = original_text.strip()
 
-    # 2. Remove all occurrences of '...'
-    text = text.replace("...", "")
+    # 2. Conditionally remove all occurrences of '...'
+    if options.get('remove_ellipsis', False):
+        text = text.replace("...", "")
 
     # 3. Process quoted text (both single and double quotes).
-    #    We'll find all substrings in quotes and selectively remove or transform the content.
     def process_quoted(match):
         quote_char = match.group(1)  # The quote symbol (single or double)
         content    = match.group(2)  # The text inside the quotes
@@ -36,32 +28,81 @@ def clean_text(original_text: str) -> str:
         if content_stripped.upper() == "BOM":
             return "BOM"
 
-        # Else, check if all tokens are exactly one character (letter or digit)
-        tokens = content_stripped.split()
-        if all(len(t) == 1 for t in tokens):
-            # Remove spaces by joining tokens, e.g. "P R 3" -> "PR3"
-            content_stripped = "".join(tokens)
+        # Conditionally remove spaces from single letters in quotes
+        if options.get('remove_spaces_quotes', False):
+            tokens = content_stripped.split()
+            # Check if content is not empty and all parts are single characters
+            if content_stripped and all(len(t) == 1 for t in tokens):
+                content_stripped = "".join(tokens)
 
-        # Return with the original quote characters preserved, unless it's BOM
+        # Conditionally remove lone quotes (if content becomes empty after stripping/processing)
+        if options.get('remove_lone_quotes', False) and not content_stripped:
+             return "" # Return empty string if quote content is empty and option is set
+
+        # Return with the original quote characters preserved, unless it was BOM or removed lone quote
         return f"{quote_char}{content_stripped}{quote_char}"
 
-    # Regex explanation:
-    # (["'])       -> capture a single or double quote in group(1)
-    # (.*?)        -> capture anything (non-greedy) until ...
-    # (\1)         -> the same quote that started it
+    print(f"DEBUG clean_text: Input='{original_text}', Options={options}") # DEBUG
+    print(f"DEBUG clean_text: Before re.sub: text='{text}'") # DEBUG
     text = re.sub(r'(["\'])(.*?)(\1)', process_quoted, text)
+    print(f"DEBUG clean_text: After re.sub: text='{text}'") # DEBUG
 
-    # 4. Convert multiple spaces to single space
-    #    This will catch double, triple, etc. spaces and make them single
+    # Handle unquoted single characters if the option is enabled
+    if options.get('remove_spaces_unquoted', False):
+        # Regex explanation:
+        # (?<!["'])                     # Negative lookbehind: Ensure not preceded by a quote
+        # (                             # Start capturing group 1
+        #   (?:                         # Start non-capturing group for the sequence
+        #     \b[a-zA-Z0-9]\b           # Match a single alphanumeric character (word boundary)
+        #     (?:\s+                    # Match one or more spaces...
+        #       (?![a-zA-Z0-9]\s*[a-zA-Z0-9]) # ...unless followed by another word (to avoid merging words)
+        #       (?![.,;:!?])            # ...or followed by punctuation
+        #     )
+        #   )+                          # Repeat the single char + space pattern one or more times
+        #   \b[a-zA-Z0-9]\b           # Match the final single alphanumeric character
+        # )                             # End capturing group 1
+        # (?![."'])                     # Negative lookahead: Ensure not followed by a quote or period
+        #
+        # This regex is complex and might need refinement based on edge cases.
+        # It aims to find sequences of 2 or more single characters separated by spaces.
+        # A simpler approach might be needed if this is too broad or misses cases.
+
+        # Simpler approach: Find sequences of (single char + space) repeated 2+ times, followed by a single char.
+        def remove_spaces_in_match(match):
+            # Get the matched sequence (e.g., "P R 2 ")
+            sequence = match.group(0)
+            # Remove all spaces within the sequence
+            return re.sub(r'\s+', '', sequence)
+
+        # Find patterns like "X Y Z" or "A B C D" (at least 3 single chars)
+        # \b([a-zA-Z0-9])\s+ means single char followed by space
+        # (?: ... ){2,} means repeat that pattern at least twice
+        # \b([a-zA-Z0-9])\b means end with a single char
+        # We use a function replacement to avoid removing spaces between words accidentally
+        text = re.sub(r'\b(?:[a-zA-Z0-9]\s+){2,}[a-zA-Z0-9]\b', remove_spaces_in_match, text)
+        print(f"DEBUG clean_text: After remove_spaces_unquoted: text='{text}'") # DEBUG
+
+    # Conditionally remove lone quotes that might remain after regex processing or were never paired
+    if options.get('remove_lone_quotes', False):
+         # Remove empty quotes first, then potentially single quotes if they remain
+         text = text.replace('""', '').replace("''", '')
+         # This part is tricky, might remove intended single quotes. Needs careful thought.
+         # A more robust approach might involve checking quote balance.
+         # For now, let's remove only explicitly empty pairs.
+
+    # 4. Convert multiple spaces to single space (Generally always useful)
     text = re.sub(r'\s{2,}', ' ', text)
 
-    # 5. Capitalize the first letter, if there's any text
-    if text:
+    # 5. Conditionally capitalize the first letter
+    if options.get('capitalize_sentences', False) and text:
         text = text[0].upper() + text[1:]
 
-    # 6. Ensure it ends with a period
-    if not text.endswith("."):
-        text += "."
+    # 6. Conditionally ensure it ends with a period
+    if options.get('add_periods', False) and text and not text.endswith("."):
+        # Avoid adding period if the last char isn't suitable (e.g., another punctuation)
+        # This is a basic check, more robust checks might be needed.
+        if text[-1].isalnum() or text[-1] in ')]}"\'':
+             text += "."
 
     return text
 
@@ -101,7 +142,7 @@ def remove_blank_rows(input_filename: str, sheet_name: str = None):
     print(f"Removed {len(blank_rows)} blank rows from {input_filename}.")
     return len(blank_rows)
 
-def process_excel(input_filename: str, sheet_name: str = None):
+def process_excel(input_filename: str, options: dict, sheet_name: str = None):
     """
     Iterates down column A in the specified (or active) sheet.
     For each non-empty cell:
@@ -135,9 +176,9 @@ def process_excel(input_filename: str, sheet_name: str = None):
             # Reset blank count
             consecutive_blank_count = 0
 
-            # Convert cell_value to string and clean it
+            # Convert cell_value to string and clean it using provided options
             text = str(cell_value)
-            new_text = clean_text(text)
+            new_text = clean_text(text, options)
 
             # Update the cell if changed
             if new_text != text:

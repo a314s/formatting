@@ -32,6 +32,19 @@ from formatting import clean_text, remove_blank_rows, process_excel
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'Video to PDF'))
 from final_app import process_files
 
+# Import functions from TTS project
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'TTS'))
+# Assuming tts4.py has functions get_available_voices() and generate_tts()
+try:
+    from tts4 import get_available_voices, generate_tts
+    TTS_ENABLED = True
+except ImportError:
+    print("WARNING: TTS module (tts4.py) not found or failed to import. TTS functionality will be disabled.")
+    TTS_ENABLED = False
+    # Define dummy functions if import fails
+    def get_available_voices(): return []
+    def generate_tts(text, voice_id): raise NotImplementedError("TTS module not loaded")
+
 def handle_error(e):
     """Simple error handler that returns a user-friendly error message"""
     error_msg = str(e)
@@ -205,6 +218,9 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             history = self.get_upload_history()
             self.wfile.write(json.dumps(history).encode())
             return
+        elif path == '/api/tts-voices':
+            self.handle_get_tts_voices()
+            return
         elif path.startswith('/download/'):
             # Extract job_id and filename from path
             parts = path.split('/')
@@ -261,6 +277,8 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_start_excel_session()
         elif self.path == '/api/convert-word':
             self.handle_word_conversion()
+        elif self.path == '/api/tts':
+            self.handle_tts_conversion()
         else:
             self.send_response(404)
             self.end_headers()
@@ -344,7 +362,13 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(400, "No file uploaded")
             return
         
-        file_content = form[b'file']
+        file_tuple = form[b'file']
+        
+        if not file_tuple or not isinstance(file_tuple, tuple):
+            self.send_error(400, "Not a file")
+            return
+            
+        filename, file_content = file_tuple
         
         if not file_content:
             self.send_error(400, "Not a file")
@@ -365,14 +389,27 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             tmp_filename = tmp_file.name
         
         try:
+            print(f"Starting formatting for {tmp_filename} with options: {options}") # DEBUG
+            # First process the text if any text processing options are enabled
+            text_options_enabled = any([options['capitalize_sentences'], options['add_periods'],
+                                        options['remove_spaces_quotes'], options['remove_spaces_unquoted'],
+                                        options['remove_lone_quotes'], options['remove_ellipsis']])
+            if text_options_enabled:
+                print(f"Calling process_excel for {tmp_filename}...") # DEBUG
+                process_excel(tmp_filename, options) # Pass the options dict
+                print(f"Finished process_excel for {tmp_filename}.") # DEBUG
+            else:
+                 print(f"Skipping process_excel for {tmp_filename} as no text options enabled.") # DEBUG
+
+            # Then remove blank rows if that option is enabled
             if options['remove_blank_lines']:
+                print(f"Calling remove_blank_rows for {tmp_filename}...") # DEBUG
                 remove_blank_rows(tmp_filename)
-            
-            if any([options['capitalize_sentences'], options['add_periods'],
-                    options['remove_spaces_quotes'], options['remove_spaces_unquoted'],
-                    options['remove_lone_quotes'], options['remove_ellipsis']]):
-                custom_process_excel(tmp_filename, options)
-            
+                print(f"Finished remove_blank_rows for {tmp_filename}.") # DEBUG
+            else:
+                 print(f"Skipping remove_blank_rows for {tmp_filename}.") # DEBUG
+
+            print(f"Reading processed data from {tmp_filename}...") # DEBUG
             with open(tmp_filename, 'rb') as f:
                 processed_data = f.read()
             
@@ -384,8 +421,9 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(processed_data)
             
         except Exception as e:
+            print(f"ERROR during Excel processing: {e}") # DEBUG - Print error to console
             self.send_error(500, f"Error processing Excel: {str(e)}")
-        
+
         finally:
             if os.path.exists(tmp_filename):
                 os.unlink(tmp_filename)
@@ -619,54 +657,126 @@ class MultiToolHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({'error': str(e)}).encode())
 
     def get_upload_history(self):
+        """Scans the UPLOAD_DIR for job folders and extracts history information."""
         history = []
-        if os.path.exists(UPLOAD_DIR):
-            for job_id in os.listdir(UPLOAD_DIR):
-                job_dir = os.path.join(UPLOAD_DIR, job_id)
-                if os.path.isdir(job_dir):
-                    # Get directory creation time
-                    try:
-                        created_time = os.path.getctime(job_dir)
-                        created_date = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
-                    except OSError:
-                        created_date = "Unknown Date" # Handle potential errors reading metadata
+        if not os.path.exists(UPLOAD_DIR):
+            return history
 
-                    # Determine job type and files
-                    files = []
-                    job_type = "Unknown"
+        for job_id in os.listdir(UPLOAD_DIR):
+            job_dir = os.path.join(UPLOAD_DIR, job_id)
+            if os.path.isdir(job_dir):
+                # Get directory creation time
+                try:
+                    created_time = os.path.getctime(job_dir)
+                    created_date = datetime.fromtimestamp(created_time).strftime('%Y-%m-%d %H:%M:%S')
+                except OSError:
+                    created_date = "Unknown Date"
 
-                    # Check for Video to PDF markers
-                    if os.path.exists(os.path.join(job_dir, 'video.mp4')):
-                        job_type = "Video to PDF"
-                        files.append("video.mp4")
-                        if os.path.exists(os.path.join(job_dir, 'script.xlsx')):
-                            files.append("script.xlsx")
-                    # Check for Word to PDF markers
-                    elif os.path.exists(os.path.join(job_dir, 'document.docx')):
-                         job_type = "Word to PDF"
-                         files.append("document.docx") # Original Word file name might be lost, using generic
+                job_type = "Unknown"
+                input_files = []
+                output_files = []
 
-                    # Check for results (both types might have results)
+                # List all files in the job directory
+                all_files_in_job_dir = [f for f in os.listdir(job_dir) if os.path.isfile(os.path.join(job_dir, f))]
+
+                # --- Detect Job Type and Files ---
+                is_video_job = any(f.lower().endswith(('.mp4', '.avi', '.mov', '.wmv', '.flv')) for f in all_files_in_job_dir) and \
+                               any(f.lower().endswith(('.xlsx', '.xls')) for f in all_files_in_job_dir)
+                is_word_job = any(f.lower().endswith(('.doc', '.docx')) for f in all_files_in_job_dir)
+
+                if is_video_job:
+                    job_type = "Video to PDF"
+                    for f in all_files_in_job_dir:
+                        if f.lower().endswith(('.mp4', '.avi', '.mov', '.wmv', '.flv', '.xlsx', '.xls')):
+                            input_files.append(f)
+                    # Look for output PDF in 'results' subdirectory
                     results_dir = os.path.join(job_dir, 'results')
                     if os.path.exists(results_dir):
-                        for file in os.listdir(results_dir):
-                            if file.endswith(('.pdf', '.docx')):
-                                files.append(file)
-                    # Check for Word-to-PDF result directly in job_dir
-                    elif job_type == "Word to PDF" and os.path.exists(os.path.join(job_dir, 'document.pdf')):
-                         files.append('document.pdf')
+                        for f in os.listdir(results_dir):
+                            if f.lower().endswith('.pdf'):
+                                output_files.append(f)
+                elif is_word_job:
+                    job_type = "Word to PDF"
+                    for f in all_files_in_job_dir:
+                        if f.lower().endswith(('.doc', '.docx')):
+                            input_files.append(f)
+                        elif f.lower().endswith('.pdf'): # PDF is directly in job_dir for Word conversion
+                            output_files.append(f)
+                # Add more job type detections here if needed (e.g., TTS)
 
+                # Combine input and output files for display, prioritizing outputs if needed
+                display_files = sorted(input_files) + sorted(output_files) # Simple concatenation for now
 
+                if job_type != "Unknown" and display_files: # Only add jobs we could identify with files
                     history.append({
                         'id': job_id,
                         'date': created_date,
                         'type': job_type,
-                        'files': files
+                        'files': display_files # Use the detected files
                     })
 
         # Sort by date, newest first
         history.sort(key=lambda x: x['date'], reverse=True)
+        print(f"DEBUG: Generated history: {history}") # DEBUG - See what history is being generated
         return history
+
+    def handle_get_tts_voices(self):
+        """Handles GET request for available TTS voices."""
+        if not TTS_ENABLED:
+            self.send_error(501, "TTS functionality is not available.")
+            return
+        try:
+            voices = get_available_voices() # Assuming this returns a list of dicts like [{'id': 'voice1', 'name': 'Voice One'}]
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(voices).encode())
+        except Exception as e:
+            self.send_error(500, f"Error getting TTS voices: {str(e)}")
+
+    def handle_tts_conversion(self):
+        """Handles POST request for TTS conversion."""
+        if not TTS_ENABLED:
+            self.send_error(501, "TTS functionality is not available.")
+            return
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data)
+
+            text = data.get('text')
+            voice_id = data.get('voice_id')
+
+            if not text or not voice_id:
+                self.send_error(400, "Missing 'text' or 'voice_id' in request body")
+                return
+
+            # Assuming generate_tts returns the path to the generated MP3 file
+            output_path = generate_tts(text, voice_id)
+
+            if not output_path or not os.path.exists(output_path):
+                 raise ValueError("TTS generation failed or did not produce an output file.")
+
+            with open(output_path, 'rb') as f:
+                audio_data = f.read()
+
+            # Clean up the temporary audio file if necessary (depends on tts4.py implementation)
+            # If generate_tts creates a temp file, uncomment the line below:
+            # os.unlink(output_path)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'audio/mpeg') # MP3 MIME type
+            self.send_header('Content-Length', str(len(audio_data)))
+            self.end_headers()
+            self.wfile.write(audio_data)
+
+        except Exception as e:
+             error_message = f"Error during TTS conversion: {str(e)}"
+             print(f"TTS Error: {error_message}") # Log the error server-side
+             self.send_response(500)
+             self.send_header('Content-type', 'application/json')
+             self.end_headers()
+             self.wfile.write(json.dumps({'error': error_message}).encode())
 
 async def handle_websocket(websocket, path):
     try:

@@ -35,10 +35,10 @@ body {
 
 .tab-pane {
     display: none;
-    flex: 1;
+    /* flex: 1; */ /* Removed this line */
 }
 
-.tab-pane.active {
+.tab-content > .tab-pane.active { /* Increased specificity */
     display: block; /* Changed from flex to block */
 }
 

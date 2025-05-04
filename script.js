@@ -290,6 +290,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize Word to PDF converter
     setupWordConverter();
 
+// Initialize TTS Converter
+    setupTTSTab();
     // Setup shutdown button
     const shutdownButton = document.getElementById('shutdown-button');
     if (shutdownButton) {
@@ -321,7 +323,8 @@ document.addEventListener('DOMContentLoaded', function() {
     tabButtons.forEach(button => {
         button.addEventListener('click', function() {
             const tabId = this.dataset.tab;
-            
+            console.log(`Tab button clicked: ${tabId}`); // DEBUG
+
             // Update active states
             tabButtons.forEach(btn => btn.classList.remove('active'));
             tabPanes.forEach(pane => pane.classList.remove('active'));
@@ -329,7 +332,11 @@ document.addEventListener('DOMContentLoaded', function() {
             this.classList.add('active');
             const targetPane = document.querySelector(`.tab-pane[data-tab="${tabId}"]`);
             if (targetPane) {
+                console.log(`Found target pane for ${tabId}:`, targetPane); // DEBUG
                 targetPane.classList.add('active');
+                console.log(`Added 'active' class to pane for ${tabId}`); // DEBUG
+            } else {
+                console.error(`Could not find target pane for tabId: ${tabId}`); // DEBUG
             }
 
             // Load history if needed
@@ -582,38 +589,53 @@ document.addEventListener('DOMContentLoaded', function() {
             body: formData
         })
         .then(response => {
+            console.log("Received response from /api/format-excel"); // DEBUG
             if (!response.ok) {
-                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                 // Try to get error text, then throw
+                 return response.text().then(text => {
+                     throw new Error(text || `Server returned ${response.status}: ${response.statusText}`);
+                 });
             }
+            console.log("Response OK, processing blob..."); // DEBUG
             return response.blob();
         })
         .then(blob => {
+            console.log("Blob received, creating download link..."); // DEBUG
             const lastDotIndex = file.name.lastIndexOf('.');
             const baseName = lastDotIndex !== -1 ? file.name.substring(0, lastDotIndex) : file.name;
             const extension = lastDotIndex !== -1 ? file.name.substring(lastDotIndex) : '';
             const modifiedFileName = `${baseName}_modified${extension}`;
-            
+
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = modifiedFileName;
             document.body.appendChild(a);
+            console.log("Triggering download..."); // DEBUG
             a.click();
-            
+
+            // Cleanup link immediately after click simulation
             setTimeout(function() {
+                console.log("Cleaning up download link..."); // DEBUG
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+                 console.log("Download link cleanup complete."); // DEBUG
             }, 0);
-            
+
             updateStatus(`Formatted and saved as ${modifiedFileName}`);
-            loadExcelPreview(file);
+            console.log("Status updated. Skipping preview reload for now."); // DEBUG
+            // loadExcelPreview(file); // Temporarily commented out
         })
         .catch(error => {
-            console.error('Error formatting Excel:', error);
+            console.error('Error formatting Excel:', error); // Log detailed error
+            // Display the actual error message from the server or fetch failure
             updateStatus(`Error during formatting: ${error.message}`);
         })
         .finally(() => {
-            updateFormatButtonState();
+            console.log("Executing finally block..."); // DEBUG
+            // Ensure the button is always re-enabled
+            updateFormatButtonState(); // This should re-enable based on selectedFileIndex and workbook state
+            console.log("Format button state updated in finally block."); // DEBUG
         });
     }
     
@@ -956,3 +978,115 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 });
+// TTS Converter Code
+function setupTTSTab() {
+    const ttsText = document.getElementById('tts-text');
+    const ttsVoiceSelect = document.getElementById('tts-voice');
+    const ttsConvertBtn = document.getElementById('tts-convert-btn');
+    const ttsResultContainer = document.getElementById('tts-result-container');
+    const ttsAudioPlayer = document.getElementById('tts-audio-player');
+    const ttsDownloadLink = document.getElementById('tts-download-link');
+    const ttsErrorContainer = document.getElementById('tts-error-container');
+
+    // Load voices when the tab is set up
+    loadTTSVoices(ttsVoiceSelect);
+
+    ttsConvertBtn.addEventListener('click', function() {
+        const text = ttsText.value.trim();
+        const voice = ttsVoiceSelect.value;
+
+        if (!text) {
+            showTTSError('Please enter some text to convert.');
+            return;
+        }
+        if (!voice || voice === 'loading') {
+            showTTSError('Please select a voice.');
+            return;
+        }
+
+        convertTextToSpeech(text, voice, ttsResultContainer, ttsAudioPlayer, ttsDownloadLink, ttsErrorContainer, ttsConvertBtn);
+    });
+}
+
+function loadTTSVoices(selectElement) {
+    selectElement.innerHTML = '<option value="loading">Loading voices...</option>';
+    selectElement.disabled = true;
+
+    fetch('/api/tts-voices')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(voices => {
+            selectElement.innerHTML = '<option value="" disabled selected>Select a voice</option>'; // Add placeholder
+            if (voices && voices.length > 0) {
+                voices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.value = voice.id; // Assuming voice object has id and name
+                    option.textContent = voice.name;
+                    selectElement.appendChild(option);
+                });
+                selectElement.disabled = false;
+            } else {
+                 selectElement.innerHTML = '<option value="" disabled selected>No voices available</option>';
+                 showTTSError('No TTS voices found on the server.');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading TTS voices:', error);
+            selectElement.innerHTML = '<option value="" disabled selected>Error loading voices</option>';
+            showTTSError(`Failed to load voices: ${error.message}`);
+        });
+}
+
+function convertTextToSpeech(text, voiceId, resultContainer, audioPlayer, downloadLink, errorContainer, convertBtn) {
+    errorContainer.style.display = 'none';
+    resultContainer.style.display = 'none';
+    convertBtn.disabled = true;
+    convertBtn.textContent = 'Converting...';
+
+    fetch('/api/tts', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: text, voice_id: voiceId })
+    })
+    .then(response => {
+        if (!response.ok) {
+             // Try to get error message from JSON response first
+             return response.json().then(errData => {
+                 throw new Error(errData.error || `Server error: ${response.status}`);
+             }).catch(() => {
+                 // Fallback if response is not JSON
+                 throw new Error(`Server error: ${response.status}`);
+             });
+        }
+        return response.blob(); // Expecting audio blob
+    })
+    .then(audioBlob => {
+        const audioUrl = URL.createObjectURL(audioBlob);
+        audioPlayer.src = audioUrl;
+        downloadLink.href = audioUrl;
+        downloadLink.style.display = 'inline-block';
+        resultContainer.style.display = 'block';
+    })
+    .catch(error => {
+        console.error('Error converting text to speech:', error);
+        showTTSError(`Conversion failed: ${error.message}`);
+    })
+    .finally(() => {
+        convertBtn.disabled = false;
+        convertBtn.textContent = 'Convert to Speech';
+    });
+}
+
+function showTTSError(message) {
+    const errorContainer = document.getElementById('tts-error-container');
+    errorContainer.textContent = message;
+    errorContainer.style.display = 'block';
+    // Hide result container if error occurs
+    document.getElementById('tts-result-container').style.display = 'none';
+}
