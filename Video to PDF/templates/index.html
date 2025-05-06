@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video to PDF Converter</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+            min-height: 150px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .drop-zone__prompt {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            color: #6c757d;
+        }
+        .drop-zone__input {
+            display: none;
+        }
+        .drop-zone__thumb {
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #f8f9fa;
+            background-size: cover;
+            position: relative;
+        }
+        .drop-zone__thumb::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 5px 0;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.75);
+            font-size: 14px;
+            text-align: center;
+        }
+        .progress {
+            display: none;
+            margin-top: 20px;
+        }
+        #result-container {
+            display: none;
+            margin-top: 20px;
+        }
+        #error-container {
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h2 class="text-center mb-0">Video to PDF Converter</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <p>This tool converts video tutorials into PDF documents with screenshots and text. Upload your video file and Excel sheet with the script text.</p>
+                        </div>
+                        
+                        <form id="upload-form">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label class="form-label">Video File:</label>
+                                    <div class="drop-zone" id="video-drop-zone">
+                                        <span class="drop-zone__prompt">Drop video file here or click to upload</span>
+                                        <input type="file" name="video" class="drop-zone__input" id="video-input" accept="video/*">
+                                    </div>
+                                    <div id="video-info" class="mt-2"></div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Excel Script File:</label>
+                                    <div class="drop-zone" id="excel-drop-zone">
+                                        <span class="drop-zone__prompt">Drop Excel file here or click to upload</span>
+                                        <input type="file" name="excel" class="drop-zone__input" id="excel-input" accept=".xlsx,.xls">
+                                    </div>
+                                    <div id="excel-info" class="mt-2"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid gap-2 mt-4">
+                                <button type="button" id="process-btn" class="btn btn-primary" disabled>Process Files</button>
+                                <div class="row mt-3">
+                                    <div class="col-md-6">
+                                        <a href="/get_frames" class="btn btn-success w-100">Get Frames</a>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <a href="/convert_to_pdf" class="btn btn-info w-100">Convert to PDF</a>
+                                    </div>
+                                </div>
+                                <a href="/settings" class="btn btn-outline-secondary mt-3">Settings</a>
+                            </div>
+                        </form>
+                        
+                        <div class="progress mt-4">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        
+                        <div id="error-container" class="alert alert-danger mt-4"></div>
+                        
+                        <div id="result-container" class="alert alert-success mt-4">
+                            <h4>Processing Complete!</h4>
+                            <p id="result-message"></p>
+                            <div class="d-grid gap-2 mt-3">
+                                <a id="download-link" href="#" class="btn btn-success">Download PDF</a>
+                                <button id="cleanup-btn" class="btn btn-outline-danger">Delete Temporary Files</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get elements
+            const videoDropZone = document.getElementById('video-drop-zone');
+            const excelDropZone = document.getElementById('excel-drop-zone');
+            const videoInput = document.getElementById('video-input');
+            const excelInput = document.getElementById('excel-input');
+            const videoInfo = document.getElementById('video-info');
+            const excelInfo = document.getElementById('excel-info');
+            const processBtn = document.getElementById('process-btn');
+            const progressBar = document.querySelector('.progress');
+            const progressBarInner = document.querySelector('.progress-bar');
+            const resultContainer = document.getElementById('result-container');
+            const resultMessage = document.getElementById('result-message');
+            const downloadLink = document.getElementById('download-link');
+            const cleanupBtn = document.getElementById('cleanup-btn');
+            const errorContainer = document.getElementById('error-container');
+            
+            let videoFile = null;
+            let excelFile = null;
+            let jobId = null;
+            
+            // Setup drop zone event listeners
+            setupDropZone(videoDropZone, videoInput, handleVideoFile);
+            setupDropZone(excelDropZone, excelInput, handleExcelFile);
+            
+            // Handle file selection
+            videoInput.addEventListener('change', function() {
+                if (this.files.length) {
+                    handleVideoFile(this.files[0]);
+                }
+            });
+            
+            excelInput.addEventListener('change', function() {
+                if (this.files.length) {
+                    handleExcelFile(this.files[0]);
+                }
+            });
+            
+            // Process button click
+            processBtn.addEventListener('click', function() {
+                if (videoFile && excelFile) {
+                    uploadFiles();
+                }
+            });
+            
+            // Cleanup button click
+            cleanupBtn.addEventListener('click', function() {
+                if (jobId) {
+                    cleanupFiles(jobId);
+                }
+            });
+            
+            // Setup drop zone
+            function setupDropZone(dropZoneElement, inputElement, handleFile) {
+                dropZoneElement.addEventListener('click', function() {
+                    inputElement.click();
+                });
+                
+                dropZoneElement.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    this.classList.add('dragover');
+                });
+                
+                ['dragleave', 'dragend'].forEach(type => {
+                    dropZoneElement.addEventListener(type, function() {
+                        this.classList.remove('dragover');
+                    });
+                });
+                
+                dropZoneElement.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    this.classList.remove('dragover');
+                    
+                    if (e.dataTransfer.files.length) {
+                        inputElement.files = e.dataTransfer.files;
+                        handleFile(e.dataTransfer.files[0]);
+                    }
+                });
+            }
+            
+            // Handle video file
+            function handleVideoFile(file) {
+                if (!file.type.startsWith('video/')) {
+                    alert('Please select a valid video file.');
+                    return;
+                }
+                
+                videoFile = file;
+                videoInfo.textContent = `Selected: ${file.name} (${formatFileSize(file.size)})`;
+                updateProcessButton();
+            }
+            
+            // Handle Excel file
+            function handleExcelFile(file) {
+                const validExcelTypes = [
+                    'application/vnd.ms-excel',
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'application/vnd.ms-excel.sheet.macroEnabled.12'
+                ];
+                
+                if (!validExcelTypes.includes(file.type) && 
+                    !file.name.endsWith('.xlsx') && 
+                    !file.name.endsWith('.xls')) {
+                    alert('Please select a valid Excel file.');
+                    return;
+                }
+                
+                excelFile = file;
+                excelInfo.textContent = `Selected: ${file.name} (${formatFileSize(file.size)})`;
+                updateProcessButton();
+            }
+            
+            // Update process button state
+            function updateProcessButton() {
+                processBtn.disabled = !(videoFile && excelFile);
+            }
+            
+            // Format file size
+            function formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+            
+            // Upload files
+            function uploadFiles() {
+                // Hide previous results and errors
+                resultContainer.style.display = 'none';
+                errorContainer.style.display = 'none';
+                
+                // Show progress bar
+                progressBar.style.display = 'flex';
+                progressBarInner.style.width = '10%';
+                
+                const formData = new FormData();
+                formData.append('video', videoFile);
+                formData.append('excel', excelFile);
+                
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showError(data.error);
+                        return;
+                    }
+                    
+                    jobId = data.job_id;
+                    progressBarInner.style.width = '50%';
+                    
+                    // Start processing
+                    processFiles(jobId);
+                })
+                .catch(error => {
+                    showError('Upload failed: ' + error.message);
+                });
+            }
+            
+            // Process files
+            function processFiles(jobId) {
+                fetch(`/process/${jobId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    progressBarInner.style.width = '100%';
+                    
+                    if (data.error) {
+                        showError(data.error);
+                        return;
+                    }
+                    
+                    // Show result
+                    resultMessage.textContent = `Your PDF has been generated successfully!`;
+                    downloadLink.href = data.download_url;
+                    resultContainer.style.display = 'block';
+                    
+                    // Hide progress after a delay
+                    setTimeout(() => {
+                        progressBar.style.display = 'none';
+                    }, 1000);
+                })
+                .catch(error => {
+                    showError('Processing failed: ' + error.message);
+                });
+            }
+            
+            // Cleanup files
+            function cleanupFiles(jobId) {
+                fetch(`/cleanup/${jobId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Temporary files have been deleted.');
+                        cleanupBtn.disabled = true;
+                    } else {
+                        alert('Failed to delete temporary files: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    alert('Cleanup failed: ' + error.message);
+                });
+            }
+            
+            // Show error
+            function showError(message) {
+                errorContainer.textContent = message;
+                errorContainer.style.display = 'block';
+                progressBar.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extract Video Frames</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+            min-height: 150px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .drop-zone__prompt {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            color: #6c757d;
+        }
+        .drop-zone__input {
+            display: none;
+        }
+        .progress {
+            display: none;
+            margin-top: 20px;
+        }
+        #result-container {
+            display: none;
+            margin-top: 20px;
+        }
+        #error-container {
+            display: none;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h2 class="text-center mb-0">Extract Video Frames</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <p>This tool extracts frames from a video at a rate of 1 frame per second and provides them as a downloadable ZIP file.</p>
+                        </div>
+                        
+                        <form id="upload-form">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <label class="form-label">Video File:</label>
+                                    <div class="drop-zone" id="video-drop-zone">
+                                        <span class="drop-zone__prompt">Drop video file here or click to upload</span>
+                                        <input type="file" name="video" class="drop-zone__input" id="video-input" accept="video/*">
+                                    </div>
+                                    <div id="video-info" class="mt-2"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid gap-2 mt-4">
+                                <button type="button" id="process-btn" class="btn btn-primary" disabled>Extract Frames</button>
+                                <a href="/" class="btn btn-outline-secondary">Back to Main Page</a>
+                            </div>
+                        </form>
+                        
+                        <div class="progress mt-4">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        
+                        <div id="error-container" class="alert alert-danger mt-4"></div>
+                        
+                        <div id="result-container" class="alert alert-success mt-4">
+                            <h4>Processing Complete!</h4>
+                            <p id="result-message"></p>
+                            <div class="d-grid gap-2 mt-3">
+                                <a id="download-link" href="#" class="btn btn-success">Download ZIP</a>
+                                <button id="cleanup-btn" class="btn btn-outline-danger">Delete Temporary Files</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get elements
+            const videoDropZone = document.getElementById('video-drop-zone');
+            const videoInput = document.getElementById('video-input');
+            const videoInfo = document.getElementById('video-info');
+            const processBtn = document.getElementById('process-btn');
+            const progressBar = document.querySelector('.progress');
+            const progressBarInner = document.querySelector('.progress-bar');
+            const resultContainer = document.getElementById('result-container');
+            const resultMessage = document.getElementById('result-message');
+            const downloadLink = document.getElementById('download-link');
+            const cleanupBtn = document.getElementById('cleanup-btn');
+            const errorContainer = document.getElementById('error-container');
+            
+            let videoFile = null;
+            let jobId = null;
+            
+            // Setup drop zone event listeners
+            setupDropZone(videoDropZone, videoInput, handleVideoFile);
+            
+            // Handle file selection
+            videoInput.addEventListener('change', function() {
+                if (this.files.length) {
+                    handleVideoFile(this.files[0]);
+                }
+            });
+            
+            // Process button click
+            processBtn.addEventListener('click', function() {
+                if (videoFile) {
+                    uploadVideo();
+                }
+            });
+            
+            // Cleanup button click
+            cleanupBtn.addEventListener('click', function() {
+                if (jobId) {
+                    cleanupFiles(jobId);
+                }
+            });
+            
+            // Setup drop zone
+            function setupDropZone(dropZoneElement, inputElement, handleFile) {
+                dropZoneElement.addEventListener('click', function() {
+                    inputElement.click();
+                });
+                
+                dropZoneElement.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    this.classList.add('dragover');
+                });
+                
+                ['dragleave', 'dragend'].forEach(type => {
+                    dropZoneElement.addEventListener(type, function() {
+                        this.classList.remove('dragover');
+                    });
+                });
+                
+                dropZoneElement.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    this.classList.remove('dragover');
+                    
+                    if (e.dataTransfer.files.length) {
+                        inputElement.files = e.dataTransfer.files;
+                        handleFile(e.dataTransfer.files[0]);
+                    }
+                });
+            }
+            
+            // Handle video file
+            function handleVideoFile(file) {
+                if (!file.type.startsWith('video/')) {
+                    alert('Please select a valid video file.');
+                    return;
+                }
+                
+                videoFile = file;
+                videoInfo.textContent = `Selected: ${file.name} (${formatFileSize(file.size)})`;
+                processBtn.disabled = false;
+            }
+            
+            // Format file size
+            function formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+            
+            // Upload video
+            function uploadVideo() {
+                // Hide previous results and errors
+                resultContainer.style.display = 'none';
+                errorContainer.style.display = 'none';
+                
+                // Show progress bar
+                progressBar.style.display = 'flex';
+                progressBarInner.style.width = '10%';
+                
+                const formData = new FormData();
+                formData.append('video', videoFile);
+                
+                fetch('/get_frames', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    progressBarInner.style.width = '100%';
+                    
+                    if (data.error) {
+                        showError(data.error);
+                        return;
+                    }
+                    
+                    jobId = data.job_id;
+                    
+                    // Show result
+                    resultMessage.textContent = `Successfully extracted ${data.frame_count} frames from the video.`;
+                    downloadLink.href = data.download_url;
+                    resultContainer.style.display = 'block';
+                    
+                    // Hide progress after a delay
+                    setTimeout(() => {
+                        progressBar.style.display = 'none';
+                    }, 1000);
+                })
+                .catch(error => {
+                    showError('Processing failed: ' + error.message);
+                });
+            }
+            
+            // Cleanup files
+            function cleanupFiles(jobId) {
+                fetch(`/cleanup/${jobId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Temporary files have been deleted.');
+                        cleanupBtn.disabled = true;
+                    } else {
+                        alert('Failed to delete temporary files: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    alert('Cleanup failed: ' + error.message);
+                });
+            }
+            
+            // Show error
+            function showError(message) {
+                errorContainer.textContent = message;
+                errorContainer.style.display = 'block';
+                progressBar.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
