@@ -23,4 +23,5 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
-temp/
+temp/config.py
+uploads/sapheb-b87c6918d4ef.json
